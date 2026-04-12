@@ -127,13 +127,20 @@ export interface TicketCreate {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+export type DocType = "folder" | "page" | "whiteboard" | "mermaid" | "file" | string;
+
 export interface Document {
   id: string;
   space_id: string;
   topic_id: string | null;
+  parent_id: string | null;
+  type: DocType;
   title: string;
   content: string;
-  parent_id: string | null;
+  tags: string[];
+  doc_metadata: Record<string, unknown>;
+  icon: string | null;
+  is_archived: boolean;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -141,7 +148,11 @@ export interface Document {
 export interface DocumentCreate {
   space_id: string;
   topic_id?: string | null;
+  parent_id?: string | null;
+  type?: DocType;
   title: string;
   content?: string;
-  parent_id?: string | null;
+  tags?: string[];
+  doc_metadata?: Record<string, unknown>;
+  icon?: string | null;
 }

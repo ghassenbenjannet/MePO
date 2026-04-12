@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -14,6 +15,9 @@ router = APIRouter()
 def list_documents(
     space_id: str | None = Query(None),
     topic_id: str | None = Query(None),
+    parent_id: str | None = Query(None),
+    type: str | None = Query(None),
+    include_archived: bool = Query(False),
     db: Session = Depends(get_db),
 ) -> list[Document]:
     q = db.query(Document)
@@ -21,7 +25,17 @@ def list_documents(
         q = q.filter(Document.space_id == space_id)
     if topic_id:
         q = q.filter(Document.topic_id == topic_id)
-    return q.order_by(Document.updated_at.desc()).all()
+    if parent_id is not None:
+        # explicit None means "return root-level docs"
+        if parent_id == "root":
+            q = q.filter(Document.parent_id.is_(None))
+        else:
+            q = q.filter(Document.parent_id == parent_id)
+    if type:
+        q = q.filter(Document.type == type)
+    if not include_archived:
+        q = q.filter(Document.is_archived.is_(False))
+    return q.order_by(Document.type, Document.title).all()
 
 
 @router.post("", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
@@ -48,6 +62,7 @@ def update_document(document_id: str, payload: DocumentUpdate, db: Session = Dep
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(doc, field, value)
+    doc.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(doc)
     return doc
@@ -58,5 +73,14 @@ def delete_document(document_id: str, db: Session = Depends(get_db)) -> None:
     doc = db.query(Document).filter(Document.id == document_id).first()
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    # cascade: delete children first
+    _delete_children(document_id, db)
     db.delete(doc)
     db.commit()
+
+
+def _delete_children(parent_id: str, db: Session) -> None:
+    children = db.query(Document).filter(Document.parent_id == parent_id).all()
+    for child in children:
+        _delete_children(child.id, db)
+        db.delete(child)

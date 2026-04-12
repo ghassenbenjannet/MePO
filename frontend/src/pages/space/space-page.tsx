@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   FileText,
   FolderKanban,
-  FolderOpen,
   Layers,
   Loader2,
   Map,
@@ -15,11 +14,11 @@ import {
   Plus,
   Send,
   Sparkles,
-  StickyNote,
   Table2,
 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
-import { useCreateDocument, useDocuments } from "../../hooks/use-documents";
+import { DocumentsTab } from "../../components/documents/documents-tab";
+import { useDocuments } from "../../hooks/use-documents";
 import { useSpace } from "../../hooks/use-spaces";
 import { useCreateTicket, useTickets, useUpdateTicket } from "../../hooks/use-tickets";
 import { useCreateTopic, useTopics, useUpdateTopic } from "../../hooks/use-topics";
@@ -1159,74 +1158,6 @@ function SuiviTab({
   );
 }
 
-// ─── Documents Tab ────────────────────────────────────────────────────────────
-
-function DocumentsTab({ spaceId, topics }: { spaceId: string; topics: Topic[] }) {
-  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
-  const [newDocTitle, setNewDocTitle] = useState("");
-  const { data: docs = [], isLoading } = useDocuments({ spaceId, topicId: selectedTopic ?? undefined });
-  const { mutateAsync: createDoc, isPending: creating } = useCreateDocument();
-
-  async function handleCreate(event: React.FormEvent) {
-    event.preventDefault();
-    if (!newDocTitle.trim()) return;
-    await createDoc({ space_id: spaceId, topic_id: selectedTopic, title: newDocTitle });
-    setNewDocTitle("");
-  }
-
-  return (
-    <div className="grid gap-4 xl:grid-cols-[220px_1fr]">
-      <div className="card p-3">
-        <p className="section-title mb-2 px-2">Répertoires</p>
-        <div className="space-y-0.5">
-          <button onClick={() => setSelectedTopic(null)} className={cn("flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition", !selectedTopic ? "bg-brand-500/10 font-medium text-brand-500" : "text-[var(--text-muted)] hover:bg-[var(--bg-panel-2)] hover:text-[var(--text-strong)]")}>
-            <FolderOpen className="h-4 w-4 flex-shrink-0" /><span className="truncate">Tous les documents</span>
-          </button>
-          {topics.map((topic) => (
-            <button key={topic.id} onClick={() => setSelectedTopic(topic.id)} className={cn("flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition", selectedTopic === topic.id ? "bg-brand-500/10 font-medium text-brand-500" : "text-[var(--text-muted)] hover:bg-[var(--bg-panel-2)] hover:text-[var(--text-strong)]")}>
-              <FolderOpen className="h-4 w-4 flex-shrink-0" />
-              <span className="truncate">{topic.title}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="card p-4">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-semibold text-[var(--text-strong)]">Documents</h3>
-          <form onSubmit={handleCreate} className="flex gap-2">
-            <input value={newDocTitle} onChange={(e) => setNewDocTitle(e.target.value)} placeholder="Titre de la page..." className="input h-8 w-52 text-xs" />
-            <button type="submit" disabled={creating || !newDocTitle.trim()} className="btn-primary h-8">
-              {creating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}Nouvelle page
-            </button>
-          </form>
-        </div>
-        {isLoading && <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]"><Loader2 className="h-4 w-4 animate-spin" />Chargement...</div>}
-        {!isLoading && docs.length === 0 && (
-          <div className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-[var(--border)] py-10 text-center">
-            <FileText className="h-7 w-7 text-[var(--text-muted)]" />
-            <div><p className="font-medium text-[var(--text-strong)]">Aucun document</p><p className="text-xs text-[var(--text-muted)]">Créez votre première page ci-dessus.</p></div>
-          </div>
-        )}
-        <div className="space-y-1.5">
-          {docs.map((doc) => (
-            <div key={doc.id} className="group flex cursor-pointer items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-3 py-2.5 transition hover:border-brand-500/40 hover:bg-[var(--bg-panel)]">
-              <div className="flex items-center gap-2.5">
-                <StickyNote className="h-4 w-4 flex-shrink-0 text-brand-500" />
-                <div>
-                  <p className="text-sm font-medium text-[var(--text-strong)]">{doc.title}</p>
-                  {doc.updated_at && <p className="text-xs text-[var(--text-muted)]">Mis à jour {new Date(doc.updated_at).toLocaleDateString("fr-FR")}</p>}
-                  {doc.topic_id && <p className="text-[11px] text-[var(--text-muted)]">Lié à un topic</p>}
-                </div>
-              </div>
-              <Sparkles className="h-3.5 w-3.5 text-[var(--text-muted)] opacity-0 transition group-hover:opacity-100" />
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Chat Tab ─────────────────────────────────────────────────────────────────
 
 const SUGGESTIONS = ["Résume le backlog de cet espace", "Génère un ticket pour un sujet", "Analyse les tickets bloqués", "Crée un plan de recette", "Mets à jour la mémoire topic"];
@@ -1255,7 +1186,7 @@ function ChatTab({ spaceName, topics, tickets }: { spaceName: string; topics: To
             <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Dis-moi ce que tu veux créer ou analyser..." className="flex-1 bg-transparent text-sm text-[var(--text-strong)] outline-none placeholder:text-[var(--text-muted)]" />
             <button disabled={!input.trim()} className="btn-primary disabled:opacity-40"><Send className="h-3.5 w-3.5" />Envoyer</button>
           </div>
-          <p className="mt-1.5 text-center text-xs text-[var(--text-muted)]">Shadow PO reconstruit le contexte et l'envoie à ChatGPT avec ton skill Shadow PO.</p>
+          <p className="mt-1.5 text-center text-xs text-[var(--text-muted)]">LLM fait maison</p>
         </div>
       </div>
       <div className="space-y-3">
@@ -1269,10 +1200,6 @@ function ChatTab({ spaceName, topics, tickets }: { spaceName: string; topics: To
               </div>
             ))}
           </div>
-        </div>
-        <div className="card border-brand-500/20 bg-brand-500/5 p-4">
-          <p className="text-xs font-bold text-brand-500">Shadow Core</p>
-          <p className="mt-1.5 text-xs leading-5 text-[var(--text-muted)]">Source unique de vérité. Reconstruit le contexte à chaque requête. ChatGPT agit comme moteur d'analyse et de génération.</p>
         </div>
       </div>
     </div>

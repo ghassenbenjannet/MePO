@@ -89,3 +89,16 @@ def run_compat_migrations() -> None:
                 connection.execute(text("ALTER TABLE tickets ADD COLUMN updated_at TIMESTAMP"))
                 connection.execute(text("UPDATE tickets SET updated_at = created_at WHERE updated_at IS NULL"))
                 connection.execute(text("ALTER TABLE tickets ALTER COLUMN updated_at SET NOT NULL"))
+
+        if "documents" in inspector.get_table_names():
+            doc_columns = {column["name"] for column in inspector.get_columns("documents")}
+            if "type" not in doc_columns:
+                connection.execute(text("ALTER TABLE documents ADD COLUMN type VARCHAR(50) NOT NULL DEFAULT 'page'"))
+            if "tags" not in doc_columns:
+                connection.execute(text("ALTER TABLE documents ADD COLUMN tags JSON NOT NULL DEFAULT '[]'"))
+            if "doc_metadata" not in doc_columns:
+                connection.execute(text("ALTER TABLE documents ADD COLUMN doc_metadata JSON NOT NULL DEFAULT '{}'"))
+            if "icon" not in doc_columns:
+                connection.execute(text("ALTER TABLE documents ADD COLUMN icon VARCHAR(50)"))
+            if "is_archived" not in doc_columns:
+                connection.execute(text("ALTER TABLE documents ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT FALSE"))
