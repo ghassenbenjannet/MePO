@@ -30,3 +30,12 @@ backend/
 - `repositories/` data access helpers
 - `services/` orchestration and business logic
 - `core/` shared configuration and infrastructure
+
+## Current frontend product map
+
+- `/login` authentication entry
+- `/onboarding` first-run project creation
+- `/` dashboard
+- `/projects/:projectId` project overview
+- `/projects/:projectId/spaces/:spaceId` space hub
+- `/projects/:projectId/spaces/:spaceId/topics/:topicId` topic workspace

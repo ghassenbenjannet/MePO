@@ -1,16 +1,21 @@
-def build_context_snapshot() -> dict:
-    return {
-        "project": "HCL - Livret",
-        "space": "S1 2026",
-        "topic": {
-            "title": "Gestion multi-etablissements",
-            "memory": {
-                "facts": ["Le sujet implique plusieurs equipes et regles d'habilitation."],
-                "decisions": ["Utiliser les topics comme unite centrale de contexte."],
-                "risks": ["Risque d'incoherence entre tickets et documentation migree."],
-                "open_questions": ["Quelle strategie pour mapper les commentaires Jira ?"],
-            },
-        },
-        "related_tickets": ["LIV-101", "LIV-103"],
-        "related_documents": ["Analyse d'impact multi-etablissements"],
-    }
+from app.schemas.ai import AIContextSource
+
+
+def build_context_snapshot(project_id: str | None, space_id: str | None, topic_id: str | None) -> list[AIContextSource]:
+    context: list[AIContextSource] = []
+
+    if project_id:
+        context.append(AIContextSource(kind="project", label=project_id))
+    if space_id:
+        context.append(AIContextSource(kind="space", label=space_id))
+    if topic_id:
+        context.extend(
+            [
+                AIContextSource(kind="topic", label=topic_id),
+                AIContextSource(kind="topic_memory", label=f"{topic_id}:facts-decisions-risks"),
+                AIContextSource(kind="related_ticket", label="LIV-101"),
+                AIContextSource(kind="related_document", label="Analyse d'impact multi-etablissements"),
+            ]
+        )
+
+    return context
