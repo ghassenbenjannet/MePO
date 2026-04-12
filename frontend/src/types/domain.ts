@@ -3,6 +3,7 @@
 export interface Project {
   id: string;
   name: string;
+  status: "active" | "planning" | "archived" | string;
   description: string | null;
   image_url?: string | null;
   created_at: string | null;
@@ -10,6 +11,7 @@ export interface Project {
 
 export interface ProjectCreate {
   name: string;
+  status?: string;
   description?: string | null;
   image_url?: string | null;
 }
@@ -20,21 +22,21 @@ export interface Space {
   id: string;
   project_id: string;
   name: string;
-  status: "planning" | "active" | "closed" | string;
-  summary: string | null;
-  progress: number;
+  status: "active" | "planning" | "archived" | string;
+  description: string | null;
   start_date: string | null;
   end_date: string | null;
+  is_favorite: boolean;
 }
 
 export interface SpaceCreate {
   project_id: string;
   name: string;
   status?: string;
-  summary?: string | null;
-  progress?: number;
+  description?: string | null;
   start_date?: string | null;
   end_date?: string | null;
+  is_favorite?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

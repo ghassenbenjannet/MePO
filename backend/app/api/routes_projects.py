@@ -4,14 +4,52 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.models.ai_conversation import AIConversation
+from app.models.ai_message import AIMessage
+from app.models.comment import Comment
+from app.models.document import Document
+from app.models.membership import Membership
 from app.models.project import Project
 from app.models.space import Space
 from app.models.ticket import Ticket
-from app.models.document import Document
 from app.models.topic import Topic
+from app.models.topic_memory import TopicMemory
+from app.models.artifact import Artifact
 from app.schemas.project import ProjectCreate, ProjectRead, ProjectUpdate
 
 router = APIRouter()
+
+
+def delete_project_descendants(db: Session, project_id: str) -> None:
+    space_ids = [row[0] for row in db.query(Space.id).filter(Space.project_id == project_id).all()]
+    if not space_ids:
+        db.query(Membership).filter(Membership.project_id == project_id).delete(synchronize_session=False)
+        return
+
+    topic_ids = [row[0] for row in db.query(Topic.id).filter(Topic.space_id.in_(space_ids)).all()]
+    document_ids = [row[0] for row in db.query(Document.id).filter(Document.space_id.in_(space_ids)).all()]
+    conversation_ids = [row[0] for row in db.query(AIConversation.id).filter(AIConversation.space_id.in_(space_ids)).all()]
+
+    if conversation_ids:
+        db.query(AIMessage).filter(AIMessage.conversation_id.in_(conversation_ids)).delete(synchronize_session=False)
+        db.query(AIConversation).filter(AIConversation.id.in_(conversation_ids)).delete(synchronize_session=False)
+
+    if document_ids:
+        db.query(Comment).filter(Comment.document_id.in_(document_ids)).delete(synchronize_session=False)
+        db.query(Document).filter(Document.id.in_(document_ids)).delete(synchronize_session=False)
+
+    if topic_ids:
+        ticket_ids = [row[0] for row in db.query(Ticket.id).filter(Ticket.topic_id.in_(topic_ids)).all()]
+        if ticket_ids:
+            db.query(Comment).filter(Comment.ticket_id.in_(ticket_ids)).delete(synchronize_session=False)
+            db.query(Ticket).filter(Ticket.id.in_(ticket_ids)).delete(synchronize_session=False)
+
+        db.query(Artifact).filter(Artifact.topic_id.in_(topic_ids)).delete(synchronize_session=False)
+        db.query(TopicMemory).filter(TopicMemory.topic_id.in_(topic_ids)).delete(synchronize_session=False)
+        db.query(Topic).filter(Topic.id.in_(topic_ids)).delete(synchronize_session=False)
+
+    db.query(Space).filter(Space.id.in_(space_ids)).delete(synchronize_session=False)
+    db.query(Membership).filter(Membership.project_id == project_id).delete(synchronize_session=False)
 
 
 @router.get("", response_model=list[ProjectRead])
@@ -59,6 +97,7 @@ def delete_project(project_id: str, db: Session = Depends(get_db)) -> None:
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    delete_project_descendants(db, project.id)
     db.delete(project)
     db.commit()
 

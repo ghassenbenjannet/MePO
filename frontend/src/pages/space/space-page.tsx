@@ -446,8 +446,8 @@ export function SpacePage() {
         <div>
           <p className="section-title">Espace</p>
           <h1 className="mt-0.5 text-xl font-bold text-[var(--text-strong)]">{spaceName}</h1>
-          {space?.summary && (
-            <p className="mt-0.5 text-sm text-[var(--text-muted)]">{space.summary}</p>
+          {space?.description && (
+            <p className="mt-0.5 text-sm text-[var(--text-muted)]">{space.description}</p>
           )}
         </div>
         <div className="flex gap-2">

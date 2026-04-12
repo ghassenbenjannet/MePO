@@ -1,72 +1,114 @@
-import { ArrowRight, Loader2, Plus, FolderOpen } from "lucide-react";
-import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { useProject } from "../../hooks/use-projects";
-import { useSpaces, useCreateSpace } from "../../hooks/use-spaces";
-import { useTopics } from "../../hooks/use-topics";
+import { CalendarRange, Loader2, Pencil, Plus, Sparkles, Star, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { useDeleteProject, useProject, useUpdateProject } from "../../hooks/use-projects";
+import { useCreateSpace, useDeleteSpace, useSpaces, useUpdateSpace } from "../../hooks/use-spaces";
 import { cn } from "../../lib/utils";
-import type { Space } from "../../types/domain";
+import type { Project, Space } from "../../types/domain";
 
-// ─── Status badge ─────────────────────────────────────────────────────────────
-const statusStyle: Record<string, string> = {
-  active:   "bg-accent-500/15 text-accent-500",
-  planning: "bg-brand-500/15 text-brand-500",
-  closed:   "bg-[var(--bg-panel-2)] text-[var(--text-muted)]",
-};
+const SPACE_STATUSES = [
+  { value: "active", label: "Actif" },
+  { value: "planning", label: "En preparation" },
+  { value: "archived", label: "Archive" },
+];
 
-// ─── New space modal ──────────────────────────────────────────────────────────
-function NewSpaceModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
-  const { mutateAsync, isPending } = useCreateSpace();
-  const [name, setName] = useState("");
-  const [summary, setSummary] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+function statusBadge(status: string) {
+  if (status === "active") return "bg-emerald-50 text-emerald-700";
+  if (status === "planning") return "bg-amber-50 text-amber-700";
+  return "bg-slate-100 text-slate-600";
+}
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) return;
-    await mutateAsync({
-      project_id: projectId,
-      name,
-      summary: summary || null,
-      start_date: startDate || null,
-      end_date: endDate || null,
-      status: "planning",
-      progress: 0,
-    });
-    onClose();
+function formatDateRange(startDate: string | null, endDate: string | null) {
+  if (!startDate && !endDate) return "Dates non renseignees";
+  if (startDate && endDate) {
+    return `${new Date(startDate).toLocaleDateString("fr-FR")} - ${new Date(endDate).toLocaleDateString("fr-FR")}`;
+  }
+  if (startDate) return `A partir du ${new Date(startDate).toLocaleDateString("fr-FR")}`;
+  return `Jusqu'au ${new Date(endDate as string).toLocaleDateString("fr-FR")}`;
+}
+
+function ProjectSettingsModal({
+  project,
+  onClose,
+}: {
+  project: Project;
+  onClose: () => void;
+}) {
+  const { mutateAsync: updateProject, isPending } = useUpdateProject();
+  const [name, setName] = useState(project.name);
+  const [status, setStatus] = useState(project.status);
+  const [description, setDescription] = useState(project.description ?? "");
+  const [imageUrl, setImageUrl] = useState(project.image_url ?? "");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setErrorMessage("");
+    try {
+      await updateProject({
+        id: project.id,
+        name: name.trim(),
+        status,
+        description: description.trim() || null,
+        image_url: imageUrl.trim() || null,
+      });
+      onClose();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Impossible d'enregistrer le projet.");
+    }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--bg-panel)] p-6 shadow-float">
-        <h2 className="text-base font-bold text-[var(--text-strong)]">Nouvel espace</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-[28px] border border-line bg-white p-6 shadow-2xl">
+        <h2 className="text-xl font-semibold text-ink"></h2>
         <form onSubmit={submit} className="mt-5 space-y-4">
           <div>
-            <label className="label">Nom *</label>
-            <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
-              placeholder="Ex : Semestre 1 2026" className="input" />
+            <label className="mb-2 block text-sm font-medium text-ink">Nom</label>
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className="w-full rounded-2xl border border-line bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
+            />
           </div>
           <div>
-            <label className="label">Résumé</label>
-            <textarea value={summary} onChange={(e) => setSummary(e.target.value)}
-              rows={2} placeholder="Périmètre, objectifs…" className="input resize-none" />
+            <label className="mb-2 block text-sm font-medium text-ink">Statut</label>
+            <select
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+              className="w-full rounded-2xl border border-line bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
+            >
+              {SPACE_STATUSES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Date début</label>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input" />
-            </div>
-            <div>
-              <label className="label">Date fin</label>
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="input" />
-            </div>
+          <div>
+            <label className="mb-2 block text-sm font-medium text-ink">Description</label>
+            <textarea
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              rows={3}
+              className="w-full resize-none rounded-2xl border border-line bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
+            />
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="btn-secondary">Annuler</button>
-            <button type="submit" disabled={isPending || !name.trim()} className="btn-primary">
-              {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Créer
+          <div>
+            <label className="mb-2 block text-sm font-medium text-ink">Image</label>
+            <input
+              value={imageUrl}
+              onChange={(event) => setImageUrl(event.target.value)}
+              className="w-full rounded-2xl border border-line bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
+            />
+          </div>
+          {errorMessage ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</div> : null}
+          <div className="flex justify-end gap-3">
+            <button type="button" onClick={onClose} className="rounded-2xl border border-line bg-white px-4 py-3 text-sm font-medium text-ink transition hover:bg-slate-50">
+              Annuler
+            </button>
+            <button type="submit" disabled={isPending || !name.trim()} className="rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60">
+              {isPending ? "Enregistrement..." : "Enregistrer"}
             </button>
           </div>
         </form>
@@ -75,175 +117,390 @@ function NewSpaceModal({ projectId, onClose }: { projectId: string; onClose: () 
   );
 }
 
-// ─── Space card ───────────────────────────────────────────────────────────────
-function SpaceCard({ space, projectId }: { space: Space; projectId: string }) {
-  const timeframe =
-    space.start_date && space.end_date
-      ? `${new Date(space.start_date).toLocaleDateString("fr-FR", { month: "short", year: "numeric" })} → ${new Date(space.end_date).toLocaleDateString("fr-FR", { month: "short", year: "numeric" })}`
-      : space.start_date
-        ? `Depuis ${new Date(space.start_date).toLocaleDateString("fr-FR", { month: "short", year: "numeric" })}`
-        : null;
+function SpaceModal({
+  projectId,
+  space,
+  onClose,
+}: {
+  projectId: string;
+  space?: Space;
+  onClose: () => void;
+}) {
+  const { mutateAsync: createSpace, isPending: creating } = useCreateSpace();
+  const { mutateAsync: updateSpace, isPending: updating } = useUpdateSpace();
+  const [name, setName] = useState(space?.name ?? "");
+  const [status, setStatus] = useState(space?.status ?? "active");
+  const [description, setDescription] = useState(space?.description ?? "");
+  const [startDate, setStartDate] = useState(space?.start_date ?? "");
+  const [endDate, setEndDate] = useState(space?.end_date ?? "");
+  const [isFavorite, setIsFavorite] = useState(space?.is_favorite ?? false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const isEdit = Boolean(space);
+  const isPending = creating || updating;
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setErrorMessage("");
+    try {
+      if (space) {
+        await updateSpace({
+          id: space.id,
+          name: name.trim(),
+          status,
+          description: description.trim() || null,
+          start_date: startDate || null,
+          end_date: endDate || null,
+          is_favorite: isFavorite,
+        });
+      } else {
+        await createSpace({
+          project_id: projectId,
+          name: name.trim(),
+          status,
+          description: description.trim() || null,
+          start_date: startDate || null,
+          end_date: endDate || null,
+          is_favorite: isFavorite,
+        });
+      }
+      onClose();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Impossible d'enregistrer l'espace.");
+    }
+  }
 
   return (
-    <Link
-      to={`/projects/${projectId}/spaces/${space.id}`}
-      className="group flex flex-col rounded-xl border border-[var(--border)] bg-[var(--bg-panel)] p-5 transition hover:border-brand-500/50 hover:shadow-panel"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <FolderOpen className="h-4 w-4 flex-shrink-0 text-brand-500" />
-          <h3 className="font-semibold text-[var(--text-strong)]">{space.name}</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-xl rounded-[28px] border border-line bg-white p-6 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-brand-600">Projet</p>
+            <h2 className="mt-2 text-xl font-semibold text-ink">{isEdit ? "Modifier l'espace" : "Creer un espace"}</h2>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-2xl border border-line bg-white px-3 py-2 text-sm text-muted transition hover:bg-slate-50">
+            Fermer
+          </button>
         </div>
-        <span className={cn("badge flex-shrink-0 capitalize", statusStyle[space.status] ?? statusStyle.planning)}>
-          {space.status}
-        </span>
-      </div>
 
-      {timeframe && <p className="mt-1 text-xs text-[var(--text-muted)]">{timeframe}</p>}
-      {space.summary && (
-        <p className="mt-2 line-clamp-2 text-sm text-[var(--text-muted)]">{space.summary}</p>
-      )}
+        <form onSubmit={submit} className="mt-6 space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-ink">Nom *</label>
+            <input
+              autoFocus
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className="w-full rounded-2xl border border-line bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
+            />
+          </div>
 
-      {/* Progress */}
-      <div className="mt-4">
-        <div className="mb-1 flex justify-between text-xs text-[var(--text-muted)]">
-          <span>Progression</span>
-          <span className="font-semibold text-[var(--text-strong)]">{space.progress}%</span>
-        </div>
-        <div className="h-1.5 overflow-hidden rounded-full bg-[var(--bg-panel-2)]">
-          <div
-            className="h-1.5 rounded-full bg-gradient-to-r from-brand-500 to-accent-500 transition-all"
-            style={{ width: `${space.progress}%` }}
-          />
-        </div>
-      </div>
+          <div>
+            <label className="mb-2 block text-sm font-medium text-ink">Statut</label>
+            <select
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+              className="w-full rounded-2xl border border-line bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
+            >
+              {SPACE_STATUSES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-      <div className="mt-4 flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)] group-hover:text-brand-500">
-        Ouvrir l'espace
-        <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+          <div>
+            <label className="mb-2 block text-sm font-medium text-ink">Description</label>
+            <textarea
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              rows={3}
+              className="w-full resize-none rounded-2xl border border-line bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
+            />
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-ink">Date de debut</label>
+              <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="w-full rounded-2xl border border-line bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100" />
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-ink">Date de fin</label>
+              <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="w-full rounded-2xl border border-line bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100" />
+            </div>
+          </div>
+
+          <label className="flex items-center gap-3 rounded-2xl border border-line bg-slate-50 px-4 py-3">
+            <input type="checkbox" checked={isFavorite} onChange={(event) => setIsFavorite(event.target.checked)} className="h-4 w-4 rounded border-line text-brand-500 focus:ring-brand-500" />
+            <div>
+              <p className="text-sm font-medium text-ink">Epingler cet espace</p>
+              <p className="text-xs text-muted">Les espaces favoris remontent en tete de liste.</p>
+            </div>
+          </label>
+
+          {errorMessage ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</div> : null}
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose} className="rounded-2xl border border-line bg-white px-4 py-3 text-sm font-medium text-ink transition hover:bg-slate-50">
+              Annuler
+            </button>
+            <button type="submit" disabled={isPending || !name.trim()} className="inline-flex items-center gap-2 rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60">
+              {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              {isEdit ? "Enregistrer" : "Creer l'espace"}
+            </button>
+          </div>
+        </form>
       </div>
-    </Link>
+    </div>
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+function DeleteProjectModal({ project, onClose }: { project: Project; onClose: () => void }) {
+  const navigate = useNavigate();
+  const { mutateAsync: deleteProject, isPending } = useDeleteProject();
+  const [errorMessage, setErrorMessage] = useState("");
+
+  async function confirmDelete() {
+    setErrorMessage("");
+    try {
+      await deleteProject(project.id);
+      navigate("/");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Impossible de supprimer le projet.");
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-[28px] border border-line bg-white p-6 shadow-2xl">
+        <h2 className="text-xl font-semibold text-ink">Supprimer le projet</h2>
+        <p className="mt-3 text-sm leading-6 text-muted">Le projet <strong>{project.name}</strong> et ses donnees descendantes seront supprimes.</p>
+        {errorMessage ? <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</div> : null}
+        <div className="mt-6 flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="rounded-2xl border border-line bg-white px-4 py-3 text-sm font-medium text-ink transition hover:bg-slate-50">Annuler</button>
+          <button type="button" disabled={isPending} onClick={confirmDelete} className="rounded-2xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60">
+            {isPending ? "Suppression..." : "Supprimer"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeleteSpaceModal({ space, onClose }: { space: Space; onClose: () => void }) {
+  const { mutateAsync: deleteSpace, isPending } = useDeleteSpace();
+  const [errorMessage, setErrorMessage] = useState("");
+
+  async function confirmDelete() {
+    setErrorMessage("");
+    try {
+      await deleteSpace(space.id);
+      onClose();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Impossible de supprimer l'espace.");
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-[28px] border border-line bg-white p-6 shadow-2xl">
+        <h2 className="text-xl font-semibold text-ink">Supprimer l'espace</h2>
+        <p className="mt-3 text-sm leading-6 text-muted">L'espace <strong>{space.name}</strong> et ses donnees descendantes seront supprimes.</p>
+        {errorMessage ? <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</div> : null}
+        <div className="mt-6 flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="rounded-2xl border border-line bg-white px-4 py-3 text-sm font-medium text-ink transition hover:bg-slate-50">Annuler</button>
+          <button type="button" disabled={isPending} onClick={confirmDelete} className="rounded-2xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60">
+            {isPending ? "Suppression..." : "Supprimer"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SpaceCard({
+  projectId,
+  space,
+  onEdit,
+  onDelete,
+}: {
+  projectId: string;
+  space: Space;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const { mutate: updateSpace, isPending } = useUpdateSpace();
+
+  return (
+    <article className="rounded-[28px] border border-line bg-white p-5 shadow-panel transition hover:border-brand-200 hover:shadow-lg">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="truncate text-lg font-semibold text-ink">{space.name}</h3>
+            {space.is_favorite ? <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">Epingle</span> : null}
+          </div>
+          <p className="mt-1 text-sm text-muted">{formatDateRange(space.start_date, space.end_date)}</p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={() => updateSpace({ id: space.id, is_favorite: !space.is_favorite })}
+            className={cn(
+              "flex h-10 w-10 items-center justify-center rounded-2xl border transition",
+              space.is_favorite ? "border-emerald-200 bg-emerald-50 text-emerald-600" : "border-line bg-white text-muted hover:border-brand-200 hover:text-brand-600",
+            )}
+            title={space.is_favorite ? "Retirer des favoris" : "Epingler cet espace"}
+          >
+            <Star className={cn("h-4 w-4", space.is_favorite && "fill-current")} />
+          </button>
+          <button type="button" onClick={onEdit} className="flex h-10 w-10 items-center justify-center rounded-2xl border border-line text-muted transition hover:border-brand-200 hover:text-brand-600">
+            <Pencil className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={onDelete} className="flex h-10 w-10 items-center justify-center rounded-2xl border border-line text-muted transition hover:border-rose-200 hover:text-rose-600">
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 flex items-center gap-3">
+        <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${statusBadge(space.status)}`}>
+          {SPACE_STATUSES.find((option) => option.value === space.status)?.label ?? space.status}
+        </span>
+        <select
+          value={space.status}
+          onChange={(event) => updateSpace({ id: space.id, status: event.target.value })}
+          className="rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink outline-none transition focus:border-brand-500"
+        >
+          {SPACE_STATUSES.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <p className="mt-4 min-h-[72px] text-sm leading-6 text-muted">{space.description || "Aucune description pour le moment."}</p>
+
+      <div className="mt-5 flex items-center justify-between border-t border-line pt-4">
+        <div className="flex items-center gap-2 text-xs text-muted">
+          <CalendarRange className="h-4 w-4" />
+          <span>Contexte de travail</span>
+        </div>
+        <Link to={`/projects/${projectId}/spaces/${space.id}`} className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800">
+          Ouvrir
+          <Sparkles className="h-4 w-4" />
+        </Link>
+      </div>
+    </article>
+  );
+}
+
 export function ProjectPage() {
   const { projectId } = useParams<{ projectId: string }>();
-  const [showModal, setShowModal] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  const [editingSpace, setEditingSpace] = useState<Space | null>(null);
+  const [deletingSpace, setDeletingSpace] = useState<Space | null>(null);
+  const [showCreateSpaceModal, setShowCreateSpaceModal] = useState(false);
 
   const { data: project, isLoading: loadingProject } = useProject(projectId);
   const { data: spaces = [], isLoading: loadingSpaces } = useSpaces(projectId);
-  const { data: topics = [] } = useTopics(undefined); // recent across project (no space filter)
+  const favoriteSpaces = useMemo(() => spaces.filter((space) => space.is_favorite), [spaces]);
 
-  const loading = loadingProject || loadingSpaces;
-
-  if (loading) {
+  if (loadingProject || loadingSpaces) {
     return (
-      <div className="flex items-center justify-center py-20 text-[var(--text-muted)]">
-        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Chargement…
+      <div className="flex items-center justify-center py-20 text-muted">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+        Chargement du projet...
       </div>
     );
   }
 
   return (
     <>
-      {showModal && projectId && (
-        <NewSpaceModal projectId={projectId} onClose={() => setShowModal(false)} />
-      )}
+      {showCreateSpaceModal && projectId ? <SpaceModal projectId={projectId} onClose={() => setShowCreateSpaceModal(false)} /> : null}
+      {editingProject ? <ProjectSettingsModal project={editingProject} onClose={() => setEditingProject(null)} /> : null}
+      {deletingProject ? <DeleteProjectModal project={deletingProject} onClose={() => setDeletingProject(null)} /> : null}
+      {editingSpace && projectId ? <SpaceModal projectId={projectId} space={editingSpace} onClose={() => setEditingSpace(null)} /> : null}
+      {deletingSpace ? <DeleteSpaceModal space={deletingSpace} onClose={() => setDeletingSpace(null)} /> : null}
 
-      <div className="mx-auto max-w-6xl space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="section-title">Projet</p>
-            <h1 className="mt-1 text-xl font-bold text-[var(--text-strong)]">
-              {project?.name ?? "…"}
-            </h1>
-            {project?.description && (
-              <p className="mt-0.5 text-sm text-[var(--text-muted)]">{project.description}</p>
-            )}
+      <div className="mx-auto max-w-7xl space-y-6">
+        <section className="rounded-[32px] border border-line bg-white p-8 shadow-panel">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-xs font-medium uppercase tracking-[0.24em] text-brand-600">Projet</p>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <h1 className="text-3xl font-semibold tracking-tight text-ink">{project?.name ?? "Projet"}</h1>
+                {project ? <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusBadge(project.status)}`}>{SPACE_STATUSES.find((option) => option.value === project.status)?.label ?? project.status}</span> : null}
+              </div>
+              <p className="mt-3 text-sm leading-7 text-muted">{project?.description || "Ce projet centralise tes espaces de travail, ton suivi, tes documents et tes futurs echanges IA."}</p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button onClick={() => setEditingProject(project ?? null)} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-line bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-slate-50">
+                <Pencil className="h-4 w-4" />
+              </button>
+              {project ? (
+                <button onClick={() => setDeletingProject(project)} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-white px-5 py-3 text-sm font-semibold text-rose-600 transition hover:bg-rose-50">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              ) : null}
+              <button onClick={() => setShowCreateSpaceModal(true)} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-600">
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
           </div>
-          <button onClick={() => setShowModal(true)} className="btn-primary">
-            <Plus className="h-4 w-4" />
-            Nouvel espace
-          </button>
-        </div>
+        </section>
 
-        {/* Spaces */}
-        <div>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-bold text-[var(--text-strong)]">
-              Espaces{" "}
-              <span className="ml-1 rounded bg-[var(--bg-panel-2)] px-1.5 py-0.5 text-xs text-[var(--text-muted)]">
-                {spaces.length}
-              </span>
-            </h2>
+        <section className="grid gap-4 md:grid-cols-3">
+          <div className="rounded-[28px] border border-line bg-white p-5 shadow-panel">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">Espaces</p>
+            <p className="mt-3 text-3xl font-semibold text-ink">{spaces.length}</p>
+            <p className="mt-2 text-sm text-muted">Tous les espaces rattaches a ce projet.</p>
+          </div>
+          <div className="rounded-[28px] border border-line bg-white p-5 shadow-panel">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">Favoris</p>
+            <p className="mt-3 text-3xl font-semibold text-ink">{favoriteSpaces.length}</p>
+            <p className="mt-2 text-sm text-muted">Espaces epingles pour un acces rapide.</p>
+          </div>
+          <div className="rounded-[28px] border border-line bg-white p-5 shadow-panel">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">Structure</p>
+            <p className="mt-3 text-lg font-semibold text-ink">Projet - Espaces</p>
+            <p className="mt-2 text-sm text-muted">Un projet et ses espaces sont maintenant editables, supprimables et statables.</p>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-ink">Gestion des espaces</h2>
+              <p className="mt-1 text-sm text-muted">Chaque espace porte un nom, un statut, une description, des dates et peut etre epingle.</p>
+            </div>
           </div>
 
           {spaces.length === 0 ? (
-            <button
-              onClick={() => setShowModal(true)}
-              className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[var(--border)] py-12 text-center transition hover:border-brand-500/50 hover:bg-brand-500/5"
-            >
-              <Plus className="h-7 w-7 text-[var(--text-muted)]" />
-              <p className="text-sm font-medium text-[var(--text-muted)]">Créer le premier espace</p>
+            <button onClick={() => setShowCreateSpaceModal(true)} className="flex w-full flex-col items-center justify-center gap-3 rounded-[28px] border-2 border-dashed border-line bg-white py-20 text-center transition hover:border-brand-300 hover:bg-brand-50/40">
+              <Plus className="h-8 w-8 text-muted" />
+              <div>
+                <p className="text-base font-semibold text-ink">Aucun espace pour le moment</p>
+                <p className="mt-2 text-sm text-muted">Cree ton premier espace pour structurer ce projet.</p>
+              </div>
             </button>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
               {spaces.map((space) => (
-                <SpaceCard key={space.id} space={space} projectId={projectId!} />
+                <SpaceCard
+                  key={space.id}
+                  projectId={projectId!}
+                  space={space}
+                  onEdit={() => setEditingSpace(space)}
+                  onDelete={() => setDeletingSpace(space)}
+                />
               ))}
-              {/* Add space */}
-              <button
-                onClick={() => setShowModal(true)}
-                className="group flex min-h-[160px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[var(--border)] transition hover:border-brand-500/50 hover:bg-brand-500/5"
-              >
-                <Plus className="h-6 w-6 text-[var(--text-muted)] group-hover:text-brand-500" />
-                <span className="text-sm font-medium text-[var(--text-muted)] group-hover:text-brand-500">
-                  Nouvel espace
-                </span>
-              </button>
             </div>
           )}
-        </div>
-
-        {/* Recent topics */}
-        {topics.length > 0 && (
-          <div>
-            <h2 className="mb-3 text-sm font-bold text-[var(--text-strong)]">Sujets récents</h2>
-            <div className="card overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[var(--border)]">
-                    {["Titre", "Statut", "Priorité", "Owner"].map((h) => (
-                      <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-[var(--text-muted)]">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {topics.slice(0, 6).map((t) => (
-                    <tr key={t.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--bg-panel-2)]">
-                      <td className="px-4 py-2.5 font-medium text-[var(--text-strong)]">{t.title}</td>
-                      <td className="px-4 py-2.5">
-                        <span className={cn("badge capitalize", t.status === "active" ? "bg-accent-500/15 text-accent-500" : t.status === "blocked" ? "bg-danger-500/15 text-danger-500" : "bg-[var(--bg-panel-2)] text-[var(--text-muted)]")}>
-                          {t.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span className={cn("badge capitalize", t.priority === "critical" || t.priority === "high" ? "bg-warn-500/15 text-warn-500" : "bg-[var(--bg-panel-2)] text-[var(--text-muted)]")}>
-                          {t.priority}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-[var(--text-muted)]">{t.owner ?? "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        </section>
       </div>
     </>
   );

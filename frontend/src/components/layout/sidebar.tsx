@@ -1,11 +1,15 @@
-import { ChevronLeft, Clock3, FolderKanban, FolderOpen, Settings, Star } from "lucide-react";
-import { NavLink } from "react-router-dom";
-import { useProjects } from "../../hooks/use-projects";
+import { ChevronDown, ChevronLeft, Clock3, FolderKanban, FolderOpen, Settings, Star } from "lucide-react";
+import { NavLink, useParams } from "react-router-dom";
+import { useProject, useProjects } from "../../hooks/use-projects";
+import { useSpaces } from "../../hooks/use-spaces";
 import { cn } from "../../lib/utils";
 import { useUiStore } from "../../stores/ui-store";
 
 export function Sidebar() {
+  const { projectId, spaceId } = useParams<{ projectId?: string; spaceId?: string }>();
   const { data: projects = [] } = useProjects();
+  const { data: activeProject } = useProject(projectId);
+  const { data: projectSpaces = [] } = useSpaces(projectId);
   const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed);
   const toggleSidebarCollapsed = useUiStore((state) => state.toggleSidebarCollapsed);
 
@@ -40,7 +44,7 @@ export function Sidebar() {
     <aside
       className={cn(
         "hidden flex-shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-panel)] transition-[width] duration-200 xl:flex",
-        sidebarCollapsed ? "w-[88px]" : "w-72",
+        sidebarCollapsed ? "w-[88px]" : "w-80",
       )}
     >
       <div className="flex h-16 items-center justify-between border-b border-[var(--border)] px-4">
@@ -67,25 +71,70 @@ export function Sidebar() {
             </div>
 
             {section.items.length > 0 ? (
-              section.items.map((project) => (
-                <NavLink
-                  key={project.id}
-                  to={`/projects/${project.id}`}
-                  className={({ isActive }) =>
-                    cn(
-                      "flex items-center rounded-xl px-3 py-2 text-sm transition",
-                      sidebarCollapsed ? "justify-center" : "gap-2.5",
-                      isActive
-                        ? "bg-brand-500/10 font-semibold text-brand-500"
-                        : "text-[var(--text-muted)] hover:bg-[var(--bg-panel-2)] hover:text-[var(--text-strong)]",
-                    )
-                  }
-                  title={sidebarCollapsed ? project.name : undefined}
-                >
-                  <FolderOpen className="h-4 w-4 flex-shrink-0" />
-                  <span className={cn("truncate", sidebarCollapsed && "hidden")}>{project.name}</span>
-                </NavLink>
-              ))
+              section.items.map((project) => {
+                const isCurrentProject = project.id === projectId;
+
+                return (
+                  <div key={project.id} className="mb-1">
+                    <NavLink
+                      to={`/projects/${project.id}`}
+                      className={({ isActive }) =>
+                        cn(
+                          "flex items-center rounded-xl px-3 py-2 text-sm transition",
+                          sidebarCollapsed ? "justify-center" : "gap-2.5",
+                          isActive || isCurrentProject
+                            ? "bg-brand-500/10 font-semibold text-brand-500"
+                            : "text-[var(--text-muted)] hover:bg-[var(--bg-panel-2)] hover:text-[var(--text-strong)]",
+                        )
+                      }
+                      title={sidebarCollapsed ? project.name : undefined}
+                    >
+                      <FolderOpen className="h-4 w-4 flex-shrink-0" />
+                      <span className={cn("truncate", sidebarCollapsed && "hidden")}>{project.name}</span>
+                    </NavLink>
+
+                    {!sidebarCollapsed && isCurrentProject ? (
+                      <div className="mt-1 rounded-2xl border border-[var(--border)] bg-[var(--bg-panel-2)] p-2">
+                        <div className="mb-2 flex items-center gap-2 px-2">
+                          <ChevronDown className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+                            {activeProject?.name ?? "Projet"} / Espaces
+                          </p>
+                        </div>
+
+                        {projectSpaces.length > 0 ? (
+                          <div className="space-y-1">
+                            {projectSpaces.map((space) => (
+                              <NavLink
+                                key={space.id}
+                                to={`/projects/${project.id}/spaces/${space.id}`}
+                                className={({ isActive }) =>
+                                  cn(
+                                    "flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition",
+                                    isActive || space.id === spaceId
+                                      ? "bg-white font-medium text-brand-500 shadow-sm"
+                                      : "text-[var(--text-muted)] hover:bg-white hover:text-[var(--text-strong)]",
+                                  )
+                                }
+                              >
+                                <span
+                                  className={cn(
+                                    "h-2 w-2 rounded-full",
+                                    space.is_favorite ? "bg-emerald-500" : "bg-slate-300",
+                                  )}
+                                />
+                                <span className="truncate">{space.name}</span>
+                              </NavLink>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="px-3 py-2 text-xs text-[var(--text-muted)]">Aucun espace</div>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })
             ) : (
               <div className={cn("px-3 py-2 text-xs text-[var(--text-muted)]", sidebarCollapsed && "hidden")}>
                 {section.empty}
