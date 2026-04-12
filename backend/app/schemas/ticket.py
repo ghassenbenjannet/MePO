@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -12,8 +12,14 @@ class TicketCreate(BaseModel):
     status: str = "backlog"
     priority: str = "medium"
     assignee: str | None = None
+    reporter: str | None = None
     tags: list[str] = []
     acceptance_criteria: list[str] = []
+    due_date: date | None = None
+    estimate: float | None = None
+    dependencies: list[str] = []
+    linked_document_ids: list[str] = []
+    ticket_details: dict = {}
 
 
 class TicketUpdate(BaseModel):
@@ -23,8 +29,14 @@ class TicketUpdate(BaseModel):
     status: str | None = None
     priority: str | None = None
     assignee: str | None = None
+    reporter: str | None = None
     tags: list[str] | None = None
     acceptance_criteria: list[str] | None = None
+    due_date: date | None = None
+    estimate: float | None = None
+    dependencies: list[str] | None = None
+    linked_document_ids: list[str] | None = None
+    ticket_details: dict | None = None
 
 
 class TicketRead(BaseModel):
@@ -38,6 +50,13 @@ class TicketRead(BaseModel):
     status: str
     priority: str
     assignee: str | None = None
+    reporter: str | None = None
     tags: list[str] = []
     acceptance_criteria: list[str] = []
+    due_date: date | None = None
+    estimate: float | None = None
+    dependencies: list[str] = []
+    linked_document_ids: list[str] = []
+    ticket_details: dict = {}
     created_at: datetime | None = None
+    updated_at: datetime | None = None

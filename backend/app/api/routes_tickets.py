@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -54,6 +55,7 @@ def update_ticket(ticket_id: str, payload: TicketUpdate, db: Session = Depends(g
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(ticket, field, value)
+    ticket.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(ticket)
     return ticket
