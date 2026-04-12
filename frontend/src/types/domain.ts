@@ -27,6 +27,7 @@ export interface Space {
   start_date: string | null;
   end_date: string | null;
   is_favorite: boolean;
+  progress?: number;
 }
 
 export interface SpaceCreate {

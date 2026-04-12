@@ -31,10 +31,14 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    volumes:
+      - ./backend/app:/app/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     environment:
       DATABASE_URL: postgresql+psycopg://shadow:shadow@postgres:5432/shadow_po_ai
       REDIS_URL: redis://redis:6379/0
-      OPENAI_MODEL: gpt-5.4
+      OPENAI_MODEL: gpt-4o-mini
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports:
       - "8000:8000"
     depends_on:
@@ -47,6 +51,11 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    environment:
+      VITE_API_TARGET: http://backend:8000
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/vite.config.ts:/app/vite.config.ts
     ports:
       - "5173:5173"
     depends_on:
