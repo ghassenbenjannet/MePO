@@ -1,6 +1,8 @@
 // ─── Base API client ──────────────────────────────────────────────────────────
+// In dev, Vite proxies /api → http://localhost:8000 (no CORS).
+// In prod, set VITE_API_URL to the backend origin if on a different host.
 const API_BASE = (import.meta as Record<string, unknown> & { env: Record<string, string> }).env
-  .VITE_API_URL ?? "http://localhost:8000";
+  .VITE_API_URL ?? "";
 
 function getToken(): string | null {
   try {

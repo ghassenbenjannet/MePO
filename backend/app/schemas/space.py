@@ -11,6 +11,7 @@ class SpaceCreate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     is_favorite: bool = False
+    progress: int = 0
 
 
 class SpaceUpdate(BaseModel):
@@ -20,6 +21,7 @@ class SpaceUpdate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     is_favorite: bool | None = None
+    progress: int | None = None
 
 
 class SpaceRead(BaseModel):
@@ -33,3 +35,4 @@ class SpaceRead(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     is_favorite: bool = False
+    progress: int = 0

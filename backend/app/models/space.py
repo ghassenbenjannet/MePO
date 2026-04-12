@@ -1,7 +1,7 @@
 import uuid
 from datetime import date
 
-from sqlalchemy import Boolean, Date, ForeignKey, String, Text
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, String, Text  # noqa: F401
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -18,3 +18,4 @@ class Space(Base):
     start_date: Mapped[date | None] = mapped_column(Date(), nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date(), nullable=True)
     is_favorite: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
+    progress: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)

@@ -1,31 +1,36 @@
+import logging
+
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
-from app.schemas.ai import AIActionSuggestion, AIChatRequest, AIChatResponse
+from app.schemas.ai import AIChatRequest
 from app.services.ai.context_builder import build_context_snapshot
-from app.services.ai.shadow_core import build_evidence, detect_mode, select_context_policy
+from app.services.ai.llm_gateway import call_shadow_core
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/chat", response_model=AIChatResponse)
-def chat(payload: AIChatRequest) -> AIChatResponse:
-    mode = detect_mode(payload.message)
-    context_policy, routed_sources = select_context_policy(payload.topic_id, payload.space_id, payload.project_id)
-    context_used = build_context_snapshot(payload.project_id, payload.space_id, payload.topic_id)
+@router.post("/chat")
+def chat(payload: AIChatRequest) -> JSONResponse:
+    try:
+        context_used = build_context_snapshot(payload.project_id, payload.space_id, payload.topic_id)
+        context_summary = "\n".join(f"- {c.kind}: {c.label}" for c in context_used)
 
-    if not context_used:
-        context_used = routed_sources
+        result = call_shadow_core(
+            user_message=payload.message,
+            context_summary=context_summary,
+        )
 
-    return AIChatResponse(
-        mode=mode,
-        context_policy=context_policy,
-        message="Shadow Core a selectionne un mode specialise avec contexte minimal et validation humaine avant toute action.",
-        context_used=context_used,
-        evidence=build_evidence(mode),
-        suggestions=[
-            AIActionSuggestion(type="create_ticket", label="Creer un ticket"),
-            AIActionSuggestion(type="create_document", label="Creer un document"),
-            AIActionSuggestion(type="update_memory", label="Mettre a jour la memoire"),
-            AIActionSuggestion(type="save_artifact", label="Enregistrer en artefact"),
-        ],
-    )
+        return JSONResponse(content={
+            "mode": result.get("mode", "pilotage"),
+            "context_policy": "space-first compact context",
+            "message": result.get("message", ""),
+            "context_used": [{"kind": c.kind, "label": c.label} for c in context_used],
+            "evidence": result.get("evidence", []),
+            "suggestions": result.get("suggestions", []),
+        })
+
+    except Exception as exc:
+        logger.exception("Shadow Core error: %s", exc)
+        return JSONResponse(status_code=500, content={"detail": str(exc)})

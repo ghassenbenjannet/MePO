@@ -12,11 +12,11 @@ import {
   MessageSquareText,
   Pencil,
   Plus,
-  Send,
   Sparkles,
   Table2,
 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
+import { LetsChat } from "../../components/chat/lets-chat";
 import { DocumentsTab } from "../../components/documents/documents-tab";
 import { useDocuments } from "../../hooks/use-documents";
 import { useSpace } from "../../hooks/use-spaces";
@@ -1158,53 +1158,9 @@ function SuiviTab({
   );
 }
 
-// ─── Chat Tab ─────────────────────────────────────────────────────────────────
+// ─── Chat Tab — delegates to LetsChat ────────────────────────────────────────
 
-const SUGGESTIONS = ["Résume le backlog de cet espace", "Génère un ticket pour un sujet", "Analyse les tickets bloqués", "Crée un plan de recette", "Mets à jour la mémoire topic"];
-
-function ChatTab({ spaceName, topics, tickets }: { spaceName: string; topics: Topic[]; tickets: Ticket[] }) {
-  const [input, setInput] = useState("");
-  return (
-    <div className="grid gap-4 xl:grid-cols-[1fr_280px]">
-      <div className="card flex flex-col overflow-hidden">
-        <div className="flex-1 space-y-4 p-5" style={{ minHeight: 380 }}>
-          <div className="flex gap-3">
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-accent-500 text-xs font-bold text-white">SP</div>
-            <div className="max-w-lg rounded-xl rounded-tl-none bg-[var(--bg-panel-2)] px-4 py-3">
-              <p className="text-xs font-semibold text-brand-500">Shadow PO</p>
-              <p className="mt-1 text-sm leading-6 text-[var(--text-strong)]">Bonjour ! Je suis prêt à t'assister sur l'espace <strong>{spaceName}</strong>. J'ai accès à <strong>{tickets.length} tickets</strong> et <strong>{topics.length} topics</strong>. Que veux-tu accomplir ?</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2 pl-11">
-            {SUGGESTIONS.map((s) => (
-              <button key={s} onClick={() => setInput(s)} className="rounded-full border border-[var(--border)] bg-[var(--bg-panel-2)] px-3 py-1 text-xs text-[var(--text-muted)] transition hover:border-brand-500/50 hover:text-brand-500">{s}</button>
-            ))}
-          </div>
-        </div>
-        <div className="border-t border-[var(--border)] p-3">
-          <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-panel-2)] px-3 py-2 transition focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20">
-            <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Dis-moi ce que tu veux créer ou analyser..." className="flex-1 bg-transparent text-sm text-[var(--text-strong)] outline-none placeholder:text-[var(--text-muted)]" />
-            <button disabled={!input.trim()} className="btn-primary disabled:opacity-40"><Send className="h-3.5 w-3.5" />Envoyer</button>
-          </div>
-          <p className="mt-1.5 text-center text-xs text-[var(--text-muted)]">LLM fait maison</p>
-        </div>
-      </div>
-      <div className="space-y-3">
-        <div className="card p-4">
-          <div className="mb-3 flex items-center gap-2"><Sparkles className="h-4 w-4 text-brand-500" /><p className="text-sm font-bold text-[var(--text-strong)]">Contexte actif</p></div>
-          <div className="space-y-3">
-            {[{ label: "Espace", value: spaceName }, { label: "Topics", value: `${topics.length} actifs` }, { label: "Tickets", value: `${tickets.length} total` }].map((row) => (
-              <div key={row.label}>
-                <p className="section-title">{row.label}</p>
-                <p className="mt-0.5 text-sm font-medium text-[var(--text-strong)]">{row.value}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+// (ChatTab removed — replaced by the full LetsChat component)
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
@@ -1254,7 +1210,16 @@ export function SpacePage() {
       <div>
         {activeTab === "suivi" && <SuiviTab projectId={projectId!} spaceId={spaceId!} topics={topics} tickets={tickets} documents={documents} loadingTickets={loadingTickets} />}
         {activeTab === "documents" && <DocumentsTab spaceId={spaceId!} topics={topics} />}
-        {activeTab === "chat" && <ChatTab spaceName={spaceName} topics={topics} tickets={tickets} />}
+        {activeTab === "chat" && (
+          <LetsChat
+            spaceId={spaceId!}
+            spaceName={spaceName}
+            projectId={projectId!}
+            topics={topics}
+            tickets={tickets}
+            documents={documents}
+          />
+        )}
       </div>
     </div>
   );
