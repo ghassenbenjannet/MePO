@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -15,8 +15,14 @@ router = APIRouter()
 
 
 @router.get("", response_model=list[ProjectRead])
-def list_projects(db: Session = Depends(get_db)) -> list[Project]:
-    return db.query(Project).order_by(Project.created_at.desc()).all()
+def list_projects(
+    q: str | None = Query(default=None, min_length=1),
+    db: Session = Depends(get_db),
+) -> list[Project]:
+    query = db.query(Project)
+    if q:
+        query = query.filter(Project.name.ilike(f"%{q}%"))
+    return query.order_by(Project.created_at.desc()).all()
 
 
 @router.post("", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)

@@ -1,85 +1,110 @@
-import { ArrowRight, Loader2, Plus, Rocket } from "lucide-react";
-import { useState } from "react";
+import { ArrowRight, ImagePlus, Loader2, Plus, Rocket } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useCreateProject, useProjects } from "../../hooks/use-projects";
+import { useUiStore } from "../../stores/ui-store";
 
-// ─── New project modal (inline, minimal) ─────────────────────────────────────
-const COLORS = [
-  { label: "Indigo", value: "from-indigo-500 to-purple-600" },
-  { label: "Blue", value: "from-blue-500 to-cyan-500" },
-  { label: "Emerald", value: "from-emerald-500 to-teal-500" },
-  { label: "Orange", value: "from-orange-500 to-red-500" },
-  { label: "Pink", value: "from-pink-500 to-rose-600" },
-];
+function initials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
 
 function NewProjectModal({ onClose }: { onClose: () => void }) {
   const { mutateAsync, isPending } = useCreateProject();
   const [name, setName] = useState("");
-  const [desc, setDesc] = useState("");
-  const [icon, setIcon] = useState("P");
-  const [color, setColor] = useState(COLORS[0].value);
+  const [description, setDescription] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) return;
-    await mutateAsync({ name, description: desc || null, icon, color });
+  const isValid = useMemo(() => name.trim().length > 0, [name]);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!isValid) return;
+
+    await mutateAsync({
+      name: name.trim(),
+      description: description.trim() || null,
+      image_url: imageUrl.trim() || null,
+    });
+
     onClose();
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--bg-panel)] p-6 shadow-float">
-        <h2 className="text-base font-bold text-[var(--text-strong)]">Nouveau projet</h2>
-        <form onSubmit={submit} className="mt-5 space-y-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-[28px] border border-line bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+        <div className="flex items-start justify-between gap-4">
           <div>
-            <label className="label">Nom du projet *</label>
+            <p className="text-xs font-medium uppercase tracking-[0.22em] text-brand-600">Nouveau projet</p>
+            <h2 className="mt-2 text-xl font-semibold text-ink dark:text-white">Creer un projet</h2>
+            <p className="mt-2 text-sm text-muted dark:text-slate-400">
+              Le projet est la structure la plus macro de Shadow PO AI.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl border border-line bg-white px-3 py-2 text-sm text-muted transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900"
+          >
+            Fermer
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="mt-6 space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-ink dark:text-white">Nom du projet *</label>
             <input
               autoFocus
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ex : HCL — Livret"
-              className="input"
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Ex : HCL - Livret"
+              className="w-full rounded-2xl border border-line bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:ring-brand-950"
             />
           </div>
+
           <div>
-            <label className="label">Description</label>
+            <label className="mb-2 block text-sm font-medium text-ink dark:text-white">Description</label>
             <textarea
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-              rows={2}
-              placeholder="Contexte rapide…"
-              className="input resize-none"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              rows={3}
+              placeholder="Contexte, client, perimetre..."
+              className="w-full resize-none rounded-2xl border border-line bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:ring-brand-950"
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">Icône (1-2 car.)</label>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-ink dark:text-white">Image</label>
+            <div className="flex items-center gap-3 rounded-2xl border border-line bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
+              <ImagePlus className="h-4 w-4 text-muted dark:text-slate-400" />
               <input
-                value={icon}
-                onChange={(e) => setIcon(e.target.value.slice(0, 2))}
-                maxLength={2}
-                className="input text-center font-bold"
+                value={imageUrl}
+                onChange={(event) => setImageUrl(event.target.value)}
+                placeholder="URL d'image optionnelle"
+                className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-muted dark:text-slate-100 dark:placeholder:text-slate-500"
               />
             </div>
-            <div>
-              <label className="label">Couleur</label>
-              <div className="flex gap-2 mt-1.5">
-                {COLORS.map((c) => (
-                  <button
-                    key={c.value}
-                    type="button"
-                    onClick={() => setColor(c.value)}
-                    className={`h-6 w-6 rounded-full bg-gradient-to-br ${c.value} ring-offset-2 ring-offset-[var(--bg-panel)] transition ${color === c.value ? "ring-2 ring-brand-500" : ""}`}
-                  />
-                ))}
-              </div>
-            </div>
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="btn-secondary">Annuler</button>
-            <button type="submit" disabled={isPending || !name.trim()} className="btn-primary">
-              {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Créer
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-2xl border border-line bg-white px-4 py-3 text-sm font-medium text-ink transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              disabled={!isValid || isPending}
+              className="inline-flex items-center gap-2 rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Creer le projet
             </button>
           </div>
         </form>
@@ -88,111 +113,143 @@ function NewProjectModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
 export function DashboardPage() {
   const { data: projects = [], isLoading } = useProjects();
-  const [showModal, setShowModal] = useState(false);
+  const createProjectModalOpen = useUiStore((state) => state.createProjectModalOpen);
+  const setCreateProjectModalOpen = useUiStore((state) => state.setCreateProjectModalOpen);
+  const [showModal, setShowModal] = useState(createProjectModalOpen);
+
+  useEffect(() => {
+    setShowModal(createProjectModalOpen);
+  }, [createProjectModalOpen]);
 
   return (
     <>
-      {showModal && <NewProjectModal onClose={() => setShowModal(false)} />}
+      {showModal ? (
+        <NewProjectModal
+          onClose={() => {
+            setShowModal(false);
+            setCreateProjectModalOpen(false);
+          }}
+        />
+      ) : null}
 
-      <div className="mx-auto max-w-6xl space-y-6">
-        {/* Page header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-[var(--text-strong)]">Mes projets</h1>
-            <p className="mt-0.5 text-sm text-[var(--text-muted)]">
-              {projects.length} projet{projects.length !== 1 ? "s" : ""} — sélectionne un workspace PO
-            </p>
-          </div>
-          <button onClick={() => setShowModal(true)} className="btn-primary">
-            <Plus className="h-4 w-4" />
-            Nouveau projet
-          </button>
-        </div>
-
-        {/* Loading */}
-        {isLoading && (
-          <div className="flex items-center justify-center py-20 text-[var(--text-muted)]">
-            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            Chargement…
-          </div>
-        )}
-
-        {/* Empty state */}
-        {!isLoading && projects.length === 0 && (
-          <div className="flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-[var(--border)] py-20 text-center">
-            <Rocket className="h-10 w-10 text-[var(--text-muted)]" />
-            <div>
-              <p className="font-semibold text-[var(--text-strong)]">Aucun projet pour l'instant</p>
-              <p className="mt-1 text-sm text-[var(--text-muted)]">Lance ton premier projet Shadow PO</p>
+      <div className="mx-auto max-w-6xl space-y-8">
+        <section className="rounded-[32px] border border-line bg-white p-8 shadow-panel dark:border-slate-800 dark:bg-slate-950">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-xs font-medium uppercase tracking-[0.24em] text-brand-600">Accueil</p>
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink dark:text-white">Mes projets</h1>
+              <p className="mt-3 text-sm leading-7 text-muted dark:text-slate-400">
+                Le projet est la structure la plus macro dans Shadow PO AI. Depuis cette page, tu peux consulter
+                tes projets existants et en creer un nouveau.
+              </p>
             </div>
-            <button onClick={() => setShowModal(true)} className="btn-primary">
+            <button
+              onClick={() => {
+                setShowModal(true);
+                setCreateProjectModalOpen(true);
+              }}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-600"
+            >
               <Plus className="h-4 w-4" />
-              Créer mon premier projet
+              Creer un projet
             </button>
           </div>
-        )}
+        </section>
 
-        {/* Project grid */}
-        {!isLoading && projects.length > 0 && (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {isLoading ? (
+          <div className="flex items-center justify-center rounded-[28px] border border-line bg-white py-20 text-muted shadow-panel dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            Chargement des projets...
+          </div>
+        ) : null}
+
+        {!isLoading && projects.length === 0 ? (
+          <section className="flex flex-col items-center justify-center gap-4 rounded-[28px] border-2 border-dashed border-line bg-white py-20 text-center shadow-panel dark:border-slate-800 dark:bg-slate-950">
+            <Rocket className="h-10 w-10 text-muted dark:text-slate-400" />
+            <div>
+              <p className="text-base font-semibold text-ink dark:text-white">Aucun projet pour l'instant</p>
+              <p className="mt-2 text-sm text-muted dark:text-slate-400">
+                Cree ton premier projet pour structurer ton workspace PO.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setShowModal(true);
+                setCreateProjectModalOpen(true);
+              }}
+              className="inline-flex items-center gap-2 rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-600"
+            >
+              <Plus className="h-4 w-4" />
+              Creer mon premier projet
+            </button>
+          </section>
+        ) : null}
+
+        {!isLoading && projects.length > 0 ? (
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {projects.map((project) => (
               <Link
                 key={project.id}
                 to={`/projects/${project.id}`}
-                className="group flex flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-panel)] transition hover:border-brand-500/50 hover:shadow-panel"
+                className="group overflow-hidden rounded-[28px] border border-line bg-white transition hover:border-brand-200 hover:bg-slate-50 hover:shadow-panel dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-700 dark:hover:bg-slate-900"
               >
-                {/* Color stripe */}
-                <div className={`h-1 bg-gradient-to-r ${project.color}`} />
-                <div className="flex flex-1 flex-col p-5">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${project.color} text-sm font-bold text-white`}
-                    >
-                      {project.icon}
-                    </div>
+                <div className="p-5">
+                  <div className="flex items-center gap-4">
+                    {project.image_url ? (
+                      <img
+                        src={project.image_url}
+                        alt={project.name}
+                        className="h-14 w-14 rounded-2xl object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-base font-semibold text-brand-600 dark:bg-slate-900 dark:text-brand-200">
+                        {initials(project.name) || "P"}
+                      </div>
+                    )}
+
                     <div className="min-w-0">
-                      <h2 className="truncate text-sm font-bold text-[var(--text-strong)]">
-                        {project.name}
-                      </h2>
-                      {project.created_at && (
-                        <p className="text-xs text-[var(--text-muted)]">
-                          {new Date(project.created_at).toLocaleDateString("fr-FR")}
-                        </p>
-                      )}
+                      <h2 className="truncate text-base font-semibold text-ink dark:text-white">{project.name}</h2>
+                      <p className="mt-1 text-xs text-muted dark:text-slate-400">
+                        {project.created_at
+                          ? `Cree le ${new Date(project.created_at).toLocaleDateString("fr-FR")}`
+                          : "Projet"}
+                      </p>
                     </div>
                   </div>
 
-                  {project.description && (
-                    <p className="mt-3 line-clamp-2 text-sm text-[var(--text-muted)]">
-                      {project.description}
-                    </p>
-                  )}
+                  <p className="mt-4 min-h-[42px] text-sm leading-6 text-muted dark:text-slate-400">
+                    {project.description || "Aucune description pour le moment."}
+                  </p>
 
-                  <div className="mt-auto pt-4 flex items-center justify-between">
-                    <span className="text-xs text-[var(--text-muted)]">Ouvrir le projet</span>
-                    <ArrowRight className="h-4 w-4 text-[var(--text-muted)] transition group-hover:translate-x-1 group-hover:text-brand-500" />
+                  <div className="mt-5 flex items-center justify-between">
+                    <span className="text-sm font-medium text-muted dark:text-slate-400">Ouvrir le projet</span>
+                    <ArrowRight className="h-4 w-4 text-muted transition group-hover:translate-x-1 group-hover:text-brand-600 dark:text-slate-400" />
                   </div>
                 </div>
               </Link>
             ))}
 
-            {/* Add project card */}
             <button
-              onClick={() => setShowModal(true)}
-              className="group flex min-h-[140px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[var(--border)] bg-transparent transition hover:border-brand-500/50 hover:bg-brand-500/5"
+              onClick={() => {
+                setShowModal(true);
+                setCreateProjectModalOpen(true);
+              }}
+              className="flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-[28px] border-2 border-dashed border-line bg-white px-6 py-8 text-center transition hover:border-brand-300 hover:bg-brand-50/40 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-700 dark:hover:bg-slate-900"
             >
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-dashed border-[var(--border)] transition group-hover:border-brand-500/50 group-hover:bg-brand-500/10">
-                <Plus className="h-5 w-5 text-[var(--text-muted)] group-hover:text-brand-500" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-brand-600 dark:bg-slate-900 dark:text-brand-200">
+                <Plus className="h-5 w-5" />
               </div>
-              <p className="text-sm font-medium text-[var(--text-muted)] group-hover:text-brand-500">
-                Nouveau projet
-              </p>
+              <div>
+                <p className="text-sm font-semibold text-ink dark:text-white">Creer un projet</p>
+                <p className="mt-1 text-sm text-muted dark:text-slate-400">
+                  Nom obligatoire, description et image facultatives.
+                </p>
+              </div>
             </button>
-          </div>
-        )}
+          </section>
+        ) : null}
       </div>
     </>
   );
