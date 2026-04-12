@@ -31,6 +31,29 @@ backend/
 - `services/` orchestration and business logic
 - `core/` shared configuration and infrastructure
 
+## Current backend domains
+
+- auth
+- users
+- memberships
+- audit
+- comments
+- projects
+- spaces
+- topics
+- tickets
+- documents
+- ai
+- imports
+
+## Current foundation delivered
+
+- Light-first frontend shell and primary workspace pages
+- Protected frontend routes with a first auth store
+- Backend auth endpoints and token service baseline
+- User profile, project membership/roles, audit log, and comment API stubs
+- Shadow Core first pass for AI mode routing and context transparency
+
 ## Current frontend product map
 
 - `/login` authentication entry
