@@ -51,3 +51,41 @@ def run_compat_migrations() -> None:
                 connection.execute(text("ALTER TABLE spaces ADD COLUMN description TEXT"))
             if "is_favorite" not in space_columns:
                 connection.execute(text("ALTER TABLE spaces ADD COLUMN is_favorite BOOLEAN NOT NULL DEFAULT FALSE"))
+
+        if "topics" in inspector.get_table_names():
+            topic_columns = {column["name"] for column in inspector.get_columns("topics")}
+            if "topic_nature" not in topic_columns:
+                connection.execute(text("ALTER TABLE topics ADD COLUMN topic_nature VARCHAR(50) NOT NULL DEFAULT 'study_delivery'"))
+            if "color" not in topic_columns:
+                connection.execute(text("ALTER TABLE topics ADD COLUMN color VARCHAR(50) NOT NULL DEFAULT 'indigo'"))
+            if "roadmap_start_date" not in topic_columns:
+                connection.execute(text("ALTER TABLE topics ADD COLUMN roadmap_start_date DATE"))
+            if "roadmap_end_date" not in topic_columns:
+                connection.execute(text("ALTER TABLE topics ADD COLUMN roadmap_end_date DATE"))
+            if "dependencies" not in topic_columns:
+                connection.execute(text("ALTER TABLE topics ADD COLUMN dependencies JSON NOT NULL DEFAULT '[]'"))
+            if "tags" not in topic_columns:
+                connection.execute(text("ALTER TABLE topics ADD COLUMN tags JSON NOT NULL DEFAULT '[]'"))
+            if "updated_at" not in topic_columns:
+                connection.execute(text("ALTER TABLE topics ADD COLUMN updated_at TIMESTAMP"))
+                connection.execute(text("UPDATE topics SET updated_at = created_at WHERE updated_at IS NULL"))
+                connection.execute(text("ALTER TABLE topics ALTER COLUMN updated_at SET NOT NULL"))
+
+        if "tickets" in inspector.get_table_names():
+            ticket_columns = {column["name"] for column in inspector.get_columns("tickets")}
+            if "reporter" not in ticket_columns:
+                connection.execute(text("ALTER TABLE tickets ADD COLUMN reporter VARCHAR(255)"))
+            if "due_date" not in ticket_columns:
+                connection.execute(text("ALTER TABLE tickets ADD COLUMN due_date DATE"))
+            if "estimate" not in ticket_columns:
+                connection.execute(text("ALTER TABLE tickets ADD COLUMN estimate FLOAT"))
+            if "dependencies" not in ticket_columns:
+                connection.execute(text("ALTER TABLE tickets ADD COLUMN dependencies JSON NOT NULL DEFAULT '[]'"))
+            if "linked_document_ids" not in ticket_columns:
+                connection.execute(text("ALTER TABLE tickets ADD COLUMN linked_document_ids JSON NOT NULL DEFAULT '[]'"))
+            if "ticket_details" not in ticket_columns:
+                connection.execute(text("ALTER TABLE tickets ADD COLUMN ticket_details JSON NOT NULL DEFAULT '{}'"))
+            if "updated_at" not in ticket_columns:
+                connection.execute(text("ALTER TABLE tickets ADD COLUMN updated_at TIMESTAMP"))
+                connection.execute(text("UPDATE tickets SET updated_at = created_at WHERE updated_at IS NULL"))
+                connection.execute(text("ALTER TABLE tickets ALTER COLUMN updated_at SET NOT NULL"))

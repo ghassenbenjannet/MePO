@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -8,6 +9,19 @@ from app.models.topic import Topic
 from app.schemas.topic import TopicCreate, TopicRead, TopicUpdate
 
 router = APIRouter()
+
+TOPIC_COLORS = [
+    "indigo",
+    "blue",
+    "emerald",
+    "amber",
+    "rose",
+    "violet",
+    "cyan",
+    "orange",
+    "lime",
+    "slate",
+]
 
 
 @router.get("", response_model=list[TopicRead])
@@ -23,7 +37,10 @@ def list_topics(
 
 @router.post("", response_model=TopicRead, status_code=status.HTTP_201_CREATED)
 def create_topic(payload: TopicCreate, db: Session = Depends(get_db)) -> Topic:
-    topic = Topic(id=str(uuid.uuid4()), **payload.model_dump())
+    data = payload.model_dump()
+    if not data.get("color"):
+        data["color"] = TOPIC_COLORS[abs(hash(data["title"])) % len(TOPIC_COLORS)]
+    topic = Topic(id=str(uuid.uuid4()), **data)
     db.add(topic)
     db.commit()
     db.refresh(topic)
@@ -45,6 +62,7 @@ def update_topic(topic_id: str, payload: TopicUpdate, db: Session = Depends(get_
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Topic not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(topic, field, value)
+    topic.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(topic)
     return topic

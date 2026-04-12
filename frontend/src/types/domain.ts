@@ -48,11 +48,18 @@ export interface Topic {
   description: string | null;
   status: "active" | "done" | "blocked" | string;
   priority: "low" | "medium" | "high" | "critical" | string;
+  topic_nature: "study" | "delivery" | "study_delivery" | string;
+  color: string;
+  roadmap_start_date: string | null;
+  roadmap_end_date: string | null;
   owner: string | null;
   teams: string[];
   risks: string[];
+  dependencies: string[];
   open_questions: string[];
+  tags: string[];
   created_at: string | null;
+  updated_at: string | null;
 }
 
 export interface TopicCreate {
@@ -61,7 +68,13 @@ export interface TopicCreate {
   description?: string | null;
   status?: string;
   priority?: string;
+  topic_nature?: string;
+  color?: string | null;
+  roadmap_start_date?: string | null;
+  roadmap_end_date?: string | null;
   owner?: string | null;
+  dependencies?: string[];
+  tags?: string[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,15 +91,22 @@ export type TicketStatus =
 export interface Ticket {
   id: string;
   topic_id: string;
-  type: "epic" | "feature" | "bug" | "task" | string;
+  type: "feature" | "bug" | "task" | "analysis" | "test" | string;
   title: string;
   description: string | null;
   status: TicketStatus;
   priority: "low" | "medium" | "high" | "critical" | string;
   assignee: string | null;
+  reporter: string | null;
   tags: string[];
   acceptance_criteria: string[];
+  due_date: string | null;
+  estimate: number | null;
+  dependencies: string[];
+  linked_document_ids: string[];
+  ticket_details: Record<string, unknown>;
   created_at: string | null;
+  updated_at: string | null;
 }
 
 export interface TicketCreate {
@@ -97,6 +117,12 @@ export interface TicketCreate {
   status?: string;
   priority?: string;
   assignee?: string | null;
+  reporter?: string | null;
+  due_date?: string | null;
+  estimate?: number | null;
+  dependencies?: string[];
+  linked_document_ids?: string[];
+  ticket_details?: Record<string, unknown>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
