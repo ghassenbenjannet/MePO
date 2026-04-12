@@ -1,23 +1,25 @@
-from pydantic import BaseModel
+from datetime import date
+
+from pydantic import BaseModel, Field
 
 
 class SpaceCreate(BaseModel):
     project_id: str
-    name: str
-    status: str = "planning"
-    summary: str | None = None
-    progress: int = 0
-    start_date: str | None = None
-    end_date: str | None = None
+    name: str = Field(min_length=1, max_length=255)
+    status: str = "active"
+    description: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    is_favorite: bool = False
 
 
 class SpaceUpdate(BaseModel):
     name: str | None = None
     status: str | None = None
-    summary: str | None = None
-    progress: int | None = None
-    start_date: str | None = None
-    end_date: str | None = None
+    description: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    is_favorite: bool | None = None
 
 
 class SpaceRead(BaseModel):
@@ -26,8 +28,8 @@ class SpaceRead(BaseModel):
     id: str
     project_id: str
     name: str
-    status: str = "planning"
-    summary: str | None = None
-    progress: int = 0
-    start_date: str | None = None
-    end_date: str | None = None
+    status: str = "active"
+    description: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    is_favorite: bool = False

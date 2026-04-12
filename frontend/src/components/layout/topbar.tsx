@@ -11,6 +11,7 @@ export function Topbar() {
   const setCreateProjectModalOpen = useUiStore((state) => state.setCreateProjectModalOpen);
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
+
   const { data: suggestions = [], isFetching } = useProjectSuggestions(query);
 
   const initials = user?.full_name
@@ -26,29 +27,29 @@ export function Topbar() {
   const visibleSuggestions = useMemo(() => suggestions.slice(0, 6), [suggestions]);
 
   return (
-    <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-[var(--border)] bg-[var(--bg-panel)] px-4">
-      <div className="flex items-center gap-5">
-        <Link to="/" className="text-lg font-bold tracking-tight text-[var(--text-strong)]">
+    <header className="sticky top-0 z-10 flex h-16 items-center justify-between gap-4 border-b border-line bg-white/95 px-4 backdrop-blur">
+      <div className="flex min-w-0 items-center gap-5">
+        <Link to="/" className="text-lg font-bold tracking-tight text-ink">
           MePO
         </Link>
 
         <div className="relative hidden w-[34rem] xl:block">
-          <div className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-3 py-2">
-            <Search className="h-4 w-4 text-[var(--text-muted)]" />
+          <div className="flex items-center gap-2 rounded-xl border border-line bg-slate-50 px-3 py-2">
+            <Search className="h-4 w-4 text-muted" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onFocus={() => setFocused(true)}
               onBlur={() => setTimeout(() => setFocused(false), 120)}
               placeholder="Rechercher un projet..."
-              className="w-full bg-transparent text-sm text-[var(--text-strong)] outline-none placeholder:text-[var(--text-muted)]"
+              className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-muted"
             />
           </div>
 
           {focused && query.trim().length > 0 ? (
-            <div className="absolute left-0 right-0 top-[calc(100%+8px)] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-panel)] shadow-2xl">
+            <div className="absolute left-0 right-0 top-[calc(100%+8px)] overflow-hidden rounded-xl border border-line bg-white shadow-2xl">
               {isFetching ? (
-                <div className="px-4 py-3 text-sm text-[var(--text-muted)]">Recherche...</div>
+                <div className="px-4 py-3 text-sm text-muted">Recherche...</div>
               ) : visibleSuggestions.length > 0 ? (
                 visibleSuggestions.map((project) => (
                   <button
@@ -57,14 +58,14 @@ export function Topbar() {
                       setQuery("");
                       navigate(`/projects/${project.id}`);
                     }}
-                    className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-[var(--text-strong)] transition hover:bg-[var(--bg-panel-2)]"
+                    className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-ink transition hover:bg-slate-50"
                   >
                     <span>{project.name}</span>
-                    <span className="text-xs text-[var(--text-muted)]">Projet</span>
+                    <span className="text-xs text-muted">Projet</span>
                   </button>
                 ))
               ) : (
-                <div className="px-4 py-3 text-sm text-[var(--text-muted)]">Aucun projet trouve</div>
+                <div className="px-4 py-3 text-sm text-muted">Aucun projet trouve</div>
               )}
             </div>
           ) : null}
@@ -82,7 +83,7 @@ export function Topbar() {
           <Plus className="h-4 w-4" />
           Creer un projet
         </button>
-        <button className="flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border)] text-[var(--text-muted)] transition hover:bg-[var(--bg-panel-2)] hover:text-[var(--text-strong)]">
+        <button className="flex h-9 w-9 items-center justify-center rounded-xl border border-line text-muted transition hover:bg-slate-50 hover:text-ink">
           <Bell className="h-4 w-4" />
         </button>
         <Link

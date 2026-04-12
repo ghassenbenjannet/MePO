@@ -23,8 +23,10 @@ export function useCreateSpace() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: SpaceCreate) => api.post<Space>("/api/spaces", data),
-    onSuccess: (_data, variables) =>
-      qc.invalidateQueries({ queryKey: ["spaces", variables.project_id] }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["spaces", variables.project_id] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
   });
 }
 
@@ -36,6 +38,18 @@ export function useUpdateSpace() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["spaces"] });
       qc.invalidateQueries({ queryKey: ["spaces", "detail", data.id] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
+export function useDeleteSpace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/api/spaces/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["spaces"] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
     },
   });
 }
