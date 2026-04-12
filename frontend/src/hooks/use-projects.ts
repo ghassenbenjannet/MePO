@@ -9,6 +9,14 @@ export function useProjects() {
   });
 }
 
+export function useProjectSuggestions(query: string) {
+  return useQuery<Project[]>({
+    queryKey: ["projects", "suggestions", query],
+    queryFn: () => api.get<Project[]>(`/api/projects?q=${encodeURIComponent(query)}`),
+    enabled: query.trim().length > 0,
+  });
+}
+
 export function useProject(projectId: string | undefined) {
   return useQuery<Project>({
     queryKey: ["projects", projectId],

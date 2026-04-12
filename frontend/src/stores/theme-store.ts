@@ -12,11 +12,11 @@ interface ThemeState {
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set) => ({
-      mode: "dark" as ThemeMode,
+      mode: "light" as ThemeMode,
       toggleMode: () =>
         set((state) => ({ mode: state.mode === "light" ? "dark" : "light" })),
       setMode: (mode) => set({ mode }),
     }),
-    { name: "shadow-po-theme" },
+    { name: "shadow-po-theme-v2" },
   ),
 );

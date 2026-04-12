@@ -13,6 +13,5 @@ class Project(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text(), nullable=True)
-    color: Mapped[str] = mapped_column(String(100), nullable=False, default="from-indigo-500 to-purple-500")
-    icon: Mapped[str] = mapped_column(String(10), nullable=False, default="P")
+    image_url: Mapped[str | None] = mapped_column(Text(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(), default=datetime.utcnow, nullable=False)

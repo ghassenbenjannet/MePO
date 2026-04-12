@@ -1,20 +1,18 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ProjectCreate(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=255)
     description: str | None = None
-    color: str = "from-indigo-500 to-purple-500"
-    icon: str = "P"
+    image_url: str | None = None
 
 
 class ProjectUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
-    color: str | None = None
-    icon: str | None = None
+    image_url: str | None = None
 
 
 class ProjectRead(BaseModel):
@@ -23,6 +21,5 @@ class ProjectRead(BaseModel):
     id: str
     name: str
     description: str | None = None
-    color: str = "from-indigo-500 to-purple-500"
-    icon: str = "P"
+    image_url: str | None = None
     created_at: datetime | None = None

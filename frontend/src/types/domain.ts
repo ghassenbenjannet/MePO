@@ -4,16 +4,14 @@ export interface Project {
   id: string;
   name: string;
   description: string | null;
-  color: string;
-  icon: string;
+  image_url?: string | null;
   created_at: string | null;
 }
 
 export interface ProjectCreate {
   name: string;
   description?: string | null;
-  color?: string;
-  icon?: string;
+  image_url?: string | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
