@@ -1,40 +1,157 @@
+import {
+  Bot,
+  Blocks,
+  Globe2,
+  Key,
+  LayoutGrid,
+  Link2,
+  Palette,
+  Shield,
+  Sparkles,
+} from "lucide-react";
+import { Link } from "react-router-dom";
 import { PageHeader } from "../../components/ui/page-header";
-import { SectionCard } from "../../components/ui/section-card";
+
+// ─── Setting row ──────────────────────────────────────────────────────────────
+
+function SettingRow({
+  label,
+  description,
+  value,
+  badge,
+}: {
+  label: string;
+  description?: string;
+  value?: string;
+  badge?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-3.5 border-b border-slate-100 last:border-0">
+      <div>
+        <p className="text-sm font-medium text-ink">{label}</p>
+        {description && <p className="mt-0.5 text-xs text-muted">{description}</p>}
+      </div>
+      <div className="flex flex-shrink-0 items-center gap-2">
+        {value && <span className="text-sm text-muted">{value}</span>}
+        {badge && (
+          <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-[11px] font-semibold text-brand-700">
+            {badge}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Settings section ─────────────────────────────────────────────────────────
+
+function SettingsSection({
+  icon: Icon,
+  title,
+  subtitle,
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-50">
+          <Icon className="h-4 w-4 text-brand-600" />
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold text-ink">{title}</h3>
+          <p className="mt-0.5 text-xs text-muted">{subtitle}</p>
+        </div>
+      </div>
+      <div className="px-5">{children}</div>
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader
-        eyebrow="Parametres"
-        title="Preferences d'affichage et configuration du workspace"
-        description="Le mode clair est la reference principale, avec un mode sombre disponible en complement."
+        eyebrow="Configuration"
+        title="Paramètres"
+        description="Paramètres globaux du workspace Shadow PO AI."
+        actions={
+          <Link to="/profile" className="btn-secondary text-sm">
+            <Sparkles className="h-4 w-4" />
+            Voir le profil
+          </Link>
+        }
       />
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        <SectionCard title="Affichage" subtitle="Preferences de lecture et densite visuelle.">
-          <div className="space-y-3">
-            <div className="rounded-2xl border border-line bg-slate-50 p-4 text-sm text-ink dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">Theme clair prioritaire</div>
-            <div className="rounded-2xl border border-line bg-slate-50 p-4 text-sm text-ink dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">Mode sombre disponible en complement</div>
-            <div className="rounded-2xl border border-line bg-slate-50 p-4 text-sm text-ink dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">Densite standard</div>
-            <div className="rounded-2xl border border-line bg-slate-50 p-4 text-sm text-ink dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">Navigation desktop-first</div>
-          </div>
-        </SectionCard>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Affichage */}
+        <SettingsSection icon={Palette} title="Affichage" subtitle="Thème et densité visuelle">
+          <SettingRow label="Thème actif" value="Clair (Light)" badge="Actif" />
+          <SettingRow label="Mode sombre" description="Disponible prochainement" badge="Bientôt" />
+          <SettingRow label="Densité" value="Confortable" />
+          <SettingRow label="Navigation" value="Desktop-first" />
+        </SettingsSection>
 
-        <SectionCard title="Securite" subtitle="Sessions, mots de passe et futures strategies SSO.">
-          <div className="space-y-3">
-            <div className="rounded-2xl border border-line bg-slate-50 p-4 text-sm text-ink dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">Session persistante active</div>
-            <div className="rounded-2xl border border-line bg-slate-50 p-4 text-sm text-ink dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">Reset password prevu</div>
-            <div className="rounded-2xl border border-line bg-slate-50 p-4 text-sm text-ink dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">OAuth Google / Microsoft a venir</div>
-          </div>
-        </SectionCard>
+        {/* IA */}
+        <SettingsSection icon={Bot} title="Shadow PO AI" subtitle="Moteur IA et modèle actif">
+          <SettingRow label="Modèle IA" value="gpt-4o-mini" badge="Actif" />
+          <SettingRow label="Contexte" description="Injection espace + sujets + tickets" value="Activé" />
+          <SettingRow label="Modes" description="8 modes Shadow Core disponibles" value="Tous actifs" />
+          <SettingRow label="Fallback" description="Mode démo si clé absente" badge="OK" />
+        </SettingsSection>
 
-        <SectionCard title="Integrations" subtitle="Preparations pour Jira, Confluence et providers IA futurs.">
-          <div className="space-y-3">
-            <div className="rounded-2xl border border-line bg-slate-50 p-4 text-sm text-ink dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">Jira import</div>
-            <div className="rounded-2xl border border-line bg-slate-50 p-4 text-sm text-ink dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">Confluence import</div>
-            <div className="rounded-2xl border border-line bg-slate-50 p-4 text-sm text-ink dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">LLM gateway multi-provider</div>
-          </div>
-        </SectionCard>
+        {/* Sécurité */}
+        <SettingsSection icon={Shield} title="Sécurité" subtitle="Authentification et sessions">
+          <SettingRow label="Authentification" value="JWT" badge="Actif" />
+          <SettingRow label="Session persistante" value="Activée" />
+          <SettingRow label="Reset password" description="Géré dans le profil" badge="Bientôt" />
+          <SettingRow label="OAuth" description="Google · Microsoft" badge="Prévu" />
+        </SettingsSection>
+
+        {/* Intégrations */}
+        <SettingsSection icon={Link2} title="Intégrations" subtitle="Import et connecteurs externes">
+          <SettingRow label="Jira import" description="Tickets et epics" badge="Prévu" />
+          <SettingRow label="Confluence import" description="Pages et espaces" badge="Prévu" />
+          <SettingRow label="LLM multi-provider" description="OpenAI · Anthropic · Azure" badge="Prévu" />
+          <SettingRow label="API REST" description="Accès programmatique" badge="Bientôt" />
+        </SettingsSection>
+
+        {/* Layout */}
+        <SettingsSection icon={LayoutGrid} title="Workspace" subtitle="Structure et organisation">
+          <SettingRow label="Structure" value="Projets → Espaces → Sujets" />
+          <SettingRow label="Sidebar" value="Navigation contextuelle" />
+          <SettingRow label="Right dock" description="Panneau IA intégré" value="Activé" />
+          <SettingRow label="Documents" description="Pages · Whiteboard · Mermaid" value="Actifs" />
+        </SettingsSection>
+
+        {/* Stack */}
+        <SettingsSection icon={Blocks} title="Stack technique" subtitle="Technologies et versions">
+          <SettingRow label="Frontend" value="React 18 + Vite + TypeScript" />
+          <SettingRow label="Backend" value="FastAPI + SQLAlchemy + PostgreSQL" />
+          <SettingRow label="Infra" description="Docker Compose" value="Local / Dev" />
+          <SettingRow label="Cache" value="Redis 7" />
+        </SettingsSection>
+      </div>
+
+      {/* Info banner */}
+      <div className="flex items-start gap-3 rounded-2xl border border-brand-100 bg-brand-50/40 px-5 py-4">
+        <Globe2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-brand-500" />
+        <div>
+          <p className="text-sm font-medium text-brand-800">Shadow PO AI — version dev</p>
+          <p className="mt-0.5 text-xs text-brand-700/70">
+            Application en développement actif. Certaines fonctionnalités sont en cours d'implémentation.
+            Configurez votre profil et vos préférences IA dans{" "}
+            <Link to="/profile" className="font-semibold underline underline-offset-2 hover:text-brand-800">
+              Profil utilisateur
+            </Link>.
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -1,166 +1,223 @@
-import { ChevronDown, ChevronLeft, Clock3, FolderKanban, FolderOpen, Settings, Star } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  FolderOpen,
+  LayoutDashboard,
+  Settings,
+  Sparkles,
+  Star,
+} from "lucide-react";
 import { NavLink, useParams } from "react-router-dom";
 import { useProject, useProjects } from "../../hooks/use-projects";
 import { useSpaces } from "../../hooks/use-spaces";
 import { cn } from "../../lib/utils";
 import { useUiStore } from "../../stores/ui-store";
 
+// ─── Status dot ───────────────────────────────────────────────────────────────
+
+function SpaceDot({ isFav, isActive }: { isFav: boolean; isActive: boolean }) {
+  return (
+    <span
+      className={cn(
+        "h-1.5 w-1.5 flex-shrink-0 rounded-full transition",
+        isActive ? "bg-brand-500" : isFav ? "bg-emerald-500" : "bg-slate-300",
+      )}
+    />
+  );
+}
+
+// ─── Nav item ─────────────────────────────────────────────────────────────────
+
+function NavItem({
+  to,
+  icon: Icon,
+  label,
+  collapsed,
+}: {
+  to: string;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  collapsed: boolean;
+}) {
+  return (
+    <NavLink
+      to={to}
+      end
+      title={collapsed ? label : undefined}
+      className={({ isActive }) =>
+        cn(
+          "group relative flex items-center rounded-xl px-2.5 py-2 text-sm font-medium transition-colors",
+          collapsed ? "justify-center" : "gap-2.5",
+          isActive
+            ? "bg-brand-50 text-brand-700 shadow-sm"
+            : "text-muted hover:bg-zinc-100 hover:text-ink",
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          {isActive && !collapsed && (
+            <span className="absolute left-0 inset-y-1 w-0.5 rounded-full bg-brand-500" />
+          )}
+          <Icon className={cn("h-4 w-4 flex-shrink-0 transition-colors", collapsed ? "" : "ml-1.5")} />
+          {!collapsed && <span className="truncate">{label}</span>}
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+// ─── Main sidebar ─────────────────────────────────────────────────────────────
+
 export function Sidebar() {
   const { projectId, spaceId } = useParams<{ projectId?: string; spaceId?: string }>();
   const { data: projects = [] } = useProjects();
   const { data: activeProject } = useProject(projectId);
   const { data: projectSpaces = [] } = useSpaces(projectId);
-  const sidebarCollapsed = useUiStore((state) => state.sidebarCollapsed);
-  const toggleSidebarCollapsed = useUiStore((state) => state.toggleSidebarCollapsed);
+  const collapsed = useUiStore((s) => s.sidebarCollapsed);
+  const toggle = useUiStore((s) => s.toggleSidebarCollapsed);
 
-  const recentProjects = projects.slice(0, 3);
-  const favoriteProjects: typeof projects = [];
-
-  const sections = [
-    {
-      key: "recent",
-      title: "Recent",
-      icon: Clock3,
-      items: recentProjects,
-      empty: "Aucun projet recent",
-    },
-    {
-      key: "favorites",
-      title: "Favoris",
-      icon: Star,
-      items: favoriteProjects,
-      empty: "Aucun favori",
-    },
-    {
-      key: "projects",
-      title: "Mes projets",
-      icon: FolderKanban,
-      items: projects,
-      empty: "Aucun projet",
-    },
-  ];
+  const favoriteProjects = projects.filter(
+    (p) => p.status === "active",
+  ).slice(0, 3);
 
   return (
     <aside
       className={cn(
-        "hidden flex-shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-panel)] transition-[width] duration-200 xl:flex",
-        sidebarCollapsed ? "w-[88px]" : "w-80",
+        "hidden flex-shrink-0 flex-col border-r border-slate-100 bg-white transition-[width] duration-200 xl:flex",
+        collapsed ? "w-[56px]" : "w-64",
       )}
     >
-      <div className="flex h-16 items-center justify-between border-b border-[var(--border)] px-4">
-        <p className={cn("text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]", sidebarCollapsed && "hidden")}>
-          Navigation
-        </p>
+      {/* Header */}
+      <div className="flex h-14 items-center border-b border-slate-100 px-3">
+        {!collapsed && (
+          <span className="flex-1 truncate px-1 text-[11px] font-semibold uppercase tracking-widest text-muted">
+            Navigation
+          </span>
+        )}
         <button
-          onClick={toggleSidebarCollapsed}
-          className="flex h-8 w-8 items-center justify-center rounded-md border border-[var(--border)] text-[var(--text-muted)] transition hover:bg-[var(--bg-panel-2)] hover:text-[var(--text-strong)]"
-          aria-label="Reduire ou ouvrir la navigation"
+          onClick={toggle}
+          title={collapsed ? "Ouvrir la navigation" : "Réduire"}
+          className={cn(
+            "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 text-muted transition hover:bg-slate-50 hover:text-ink",
+            collapsed && "mx-auto",
+          )}
         >
-          <ChevronLeft className={cn("h-4 w-4 transition-transform", sidebarCollapsed && "rotate-180")} />
+          {collapsed ? (
+            <ChevronRight className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronLeft className="h-3.5 w-3.5" />
+          )}
         </button>
       </div>
 
-      <nav className="flex flex-1 flex-col overflow-y-auto p-3">
-        {sections.map((section) => (
-          <div key={section.key} className="mb-5">
-            <div className={cn("mb-2 flex items-center gap-2 px-2", sidebarCollapsed && "justify-center")}>
-              <section.icon className="h-4 w-4 text-[var(--text-muted)]" />
-              <p className={cn("text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]", sidebarCollapsed && "hidden")}>
-                {section.title}
-              </p>
-            </div>
+      {/* Nav */}
+      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
+        {/* Fixed links */}
+        <NavItem to="/" icon={LayoutDashboard} label="Tableau de bord" collapsed={collapsed} />
 
-            {section.items.length > 0 ? (
-              section.items.map((project) => {
-                const isCurrentProject = project.id === projectId;
+        {/* Separator */}
+        <div className={cn("my-2 border-t border-slate-100", collapsed && "mx-1")} />
 
-                return (
-                  <div key={project.id} className="mb-1">
-                    <NavLink
-                      to={`/projects/${project.id}`}
-                      className={({ isActive }) =>
-                        cn(
-                          "flex items-center rounded-xl px-3 py-2 text-sm transition",
-                          sidebarCollapsed ? "justify-center" : "gap-2.5",
-                          isActive || isCurrentProject
-                            ? "bg-brand-500/10 font-semibold text-brand-500"
-                            : "text-[var(--text-muted)] hover:bg-[var(--bg-panel-2)] hover:text-[var(--text-strong)]",
-                        )
-                      }
-                      title={sidebarCollapsed ? project.name : undefined}
-                    >
-                      <FolderOpen className="h-4 w-4 flex-shrink-0" />
-                      <span className={cn("truncate", sidebarCollapsed && "hidden")}>{project.name}</span>
-                    </NavLink>
-
-                    {!sidebarCollapsed && isCurrentProject ? (
-                      <div className="mt-1 rounded-2xl border border-[var(--border)] bg-[var(--bg-panel-2)] p-2">
-                        <div className="mb-2 flex items-center gap-2 px-2">
-                          <ChevronDown className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
-                            {activeProject?.name ?? "Projet"} / Espaces
-                          </p>
-                        </div>
-
-                        {projectSpaces.length > 0 ? (
-                          <div className="space-y-1">
-                            {projectSpaces.map((space) => (
-                              <NavLink
-                                key={space.id}
-                                to={`/projects/${project.id}/spaces/${space.id}`}
-                                className={({ isActive }) =>
-                                  cn(
-                                    "flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition",
-                                    isActive || space.id === spaceId
-                                      ? "bg-white font-medium text-brand-500 shadow-sm"
-                                      : "text-[var(--text-muted)] hover:bg-white hover:text-[var(--text-strong)]",
-                                  )
-                                }
-                              >
-                                <span
-                                  className={cn(
-                                    "h-2 w-2 rounded-full",
-                                    space.is_favorite ? "bg-emerald-500" : "bg-slate-300",
-                                  )}
-                                />
-                                <span className="truncate">{space.name}</span>
-                              </NavLink>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="px-3 py-2 text-xs text-[var(--text-muted)]">Aucun espace</div>
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })
-            ) : (
-              <div className={cn("px-3 py-2 text-xs text-[var(--text-muted)]", sidebarCollapsed && "hidden")}>
-                {section.empty}
-              </div>
-            )}
+        {/* Recents */}
+        {!collapsed && (
+          <p className="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-widest text-muted/70">
+            Récents
+          </p>
+        )}
+        {collapsed && (
+          <div className="mb-1 flex justify-center">
+            <Clock3 className="h-3.5 w-3.5 text-muted/60" />
           </div>
-        ))}
+        )}
+        {projects.slice(0, 3).map((project) => {
+          const isCurrentProject = project.id === projectId;
+          return (
+            <div key={`recent-${project.id}`}>
+              <NavLink
+                to={`/projects/${project.id}`}
+                title={collapsed ? project.name : undefined}
+                className={({ isActive }) =>
+                  cn(
+                    "relative flex items-center rounded-xl px-2.5 py-2 text-sm transition-colors",
+                    collapsed ? "justify-center" : "gap-2.5",
+                    isActive || isCurrentProject
+                      ? "bg-brand-50 font-medium text-brand-700"
+                      : "text-muted hover:bg-zinc-100 hover:text-ink",
+                  )
+                }
+              >
+                <FolderOpen className="h-4 w-4 flex-shrink-0" />
+                {!collapsed && <span className="truncate">{project.name}</span>}
+              </NavLink>
+
+              {/* Spaces tree */}
+              {!collapsed && isCurrentProject && (
+                <div className="mt-1 mb-1 ml-3 space-y-0.5 rounded-xl border border-slate-100 bg-slate-50/70 p-1.5">
+                  <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-widest text-muted/60">
+                    {activeProject?.name ?? "Projet"} · Espaces
+                  </p>
+                  {projectSpaces.length > 0 ? (
+                    projectSpaces.map((space) => {
+                      const isActiveSpace = space.id === spaceId;
+                      return (
+                        <NavLink
+                          key={space.id}
+                          to={`/projects/${project.id}/spaces/${space.id}`}
+                          className={cn(
+                            "relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors",
+                            isActiveSpace
+                              ? "bg-white font-semibold text-brand-700 shadow-sm ring-1 ring-brand-100"
+                              : "text-muted hover:bg-white/80 hover:text-ink",
+                          )}
+                        >
+                          <SpaceDot isFav={space.is_favorite} isActive={isActiveSpace} />
+                          <span className="truncate">{space.name}</span>
+                        </NavLink>
+                      );
+                    })
+                  ) : (
+                    <p className="px-2 py-1.5 text-xs text-muted/60">Aucun espace</p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Separator */}
+        {!collapsed && favoriteProjects.length > 0 && (
+          <>
+            <div className="my-2 border-t border-slate-100" />
+            <p className="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-widest text-muted/70">
+              Favoris
+            </p>
+            {favoriteProjects.map((p) => (
+              <NavLink
+                key={`fav-${p.id}`}
+                to={`/projects/${p.id}`}
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm transition-colors",
+                    isActive
+                      ? "bg-amber-50 font-medium text-amber-700"
+                      : "text-muted hover:bg-slate-50 hover:text-ink",
+                  )
+                }
+              >
+                <Star className="h-4 w-4 flex-shrink-0 text-amber-400" />
+                <span className="truncate">{p.name}</span>
+              </NavLink>
+            ))}
+          </>
+        )}
       </nav>
 
-      <div className="border-t border-[var(--border)] p-3">
-        <NavLink
-          to="/settings"
-          className={({ isActive }) =>
-            cn(
-              "flex items-center rounded-xl px-3 py-2 text-sm transition",
-              sidebarCollapsed ? "justify-center" : "gap-2.5",
-              isActive
-                ? "bg-brand-500/10 font-semibold text-brand-500"
-                : "text-[var(--text-muted)] hover:bg-[var(--bg-panel-2)] hover:text-[var(--text-strong)]",
-            )
-          }
-          title={sidebarCollapsed ? "Parametre" : undefined}
-        >
-          <Settings className="h-4 w-4" />
-          <span className={cn(sidebarCollapsed && "hidden")}>Parametre</span>
-        </NavLink>
+      {/* Footer */}
+      <div className="border-t border-slate-100 p-2 space-y-0.5">
+        <NavItem to="/profile" icon={Sparkles} label="Shadow PO AI" collapsed={collapsed} />
+        <NavItem to="/settings" icon={Settings} label="Paramètres" collapsed={collapsed} />
       </div>
     </aside>
   );

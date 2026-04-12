@@ -426,65 +426,74 @@ export function ProjectPage() {
       {deletingSpace ? <DeleteSpaceModal space={deletingSpace} onClose={() => setDeletingSpace(null)} /> : null}
 
       <div className="mx-auto max-w-7xl space-y-6">
-        <section className="rounded-[32px] border border-line bg-white p-8 shadow-panel">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl">
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-brand-600">Projet</p>
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <h1 className="text-3xl font-semibold tracking-tight text-ink">{project?.name ?? "Projet"}</h1>
-                {project ? <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusBadge(project.status)}`}>{SPACE_STATUSES.find((option) => option.value === project.status)?.label ?? project.status}</span> : null}
-              </div>
-              <p className="mt-3 text-sm leading-7 text-muted">{project?.description || "Ce projet centralise tes espaces de travail, ton suivi, tes documents et tes futurs echanges IA."}</p>
+        {/* Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-brand-600">Projet</p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
+              <h1 className="text-2xl font-bold tracking-tight text-ink">{project?.name ?? "Projet"}</h1>
+              {project && (
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusBadge(project.status)}`}>
+                  {SPACE_STATUSES.find((o) => o.value === project.status)?.label ?? project.status}
+                </span>
+              )}
             </div>
+            <p className="mt-1 text-sm text-muted">
+              {project?.description || "Centralisez vos espaces, sujets, documents et discussions IA."}
+            </p>
+          </div>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <button onClick={() => setEditingProject(project ?? null)} className="btn-secondary">
+              <Pencil className="h-4 w-4" />
+              Modifier
+            </button>
+            {project && (
+              <button onClick={() => setDeletingProject(project)} className="btn-ghost text-red-500 hover:bg-red-50">
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
+            <button onClick={() => setShowCreateSpaceModal(true)} className="btn-primary">
+              <Plus className="h-4 w-4" />
+              Nouvel espace
+            </button>
+          </div>
+        </div>
 
-            <div className="flex flex-wrap gap-3">
-              <button onClick={() => setEditingProject(project ?? null)} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-line bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-slate-50">
-                <Pencil className="h-4 w-4" />
-              </button>
-              {project ? (
-                <button onClick={() => setDeletingProject(project)} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-white px-5 py-3 text-sm font-semibold text-rose-600 transition hover:bg-rose-50">
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              ) : null}
-              <button onClick={() => setShowCreateSpaceModal(true)} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-600">
-                <Plus className="h-4 w-4" />
-              </button>
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Espaces", value: spaces.length, sub: "espaces de travail", cls: "text-brand-600 bg-brand-50" },
+            { label: "Favoris", value: favoriteSpaces.length, sub: "espaces épinglés", cls: "text-emerald-600 bg-emerald-50" },
+            { label: "Actifs", value: spaces.filter((s) => s.status === "active").length, sub: "en cours", cls: "text-amber-600 bg-amber-50" },
+          ].map((stat) => (
+            <div key={stat.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-widest text-muted">{stat.label}</p>
+              <p className="mt-2 text-3xl font-bold tracking-tight text-ink">{stat.value}</p>
+              <p className="mt-0.5 text-xs text-muted">{stat.sub}</p>
             </div>
-          </div>
-        </section>
+          ))}
+        </div>
 
-        <section className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-[28px] border border-line bg-white p-5 shadow-panel">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">Espaces</p>
-            <p className="mt-3 text-3xl font-semibold text-ink">{spaces.length}</p>
-            <p className="mt-2 text-sm text-muted">Tous les espaces rattaches a ce projet.</p>
-          </div>
-          <div className="rounded-[28px] border border-line bg-white p-5 shadow-panel">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">Favoris</p>
-            <p className="mt-3 text-3xl font-semibold text-ink">{favoriteSpaces.length}</p>
-            <p className="mt-2 text-sm text-muted">Espaces epingles pour un acces rapide.</p>
-          </div>
-          <div className="rounded-[28px] border border-line bg-white p-5 shadow-panel">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">Structure</p>
-            <p className="mt-3 text-lg font-semibold text-ink">Projet - Espaces</p>
-            <p className="mt-2 text-sm text-muted">Un projet et ses espaces sont maintenant editables, supprimables et statables.</p>
-          </div>
-        </section>
-
+        {/* Spaces section */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-semibold text-ink">Gestion des espaces</h2>
-              <p className="mt-1 text-sm text-muted">Chaque espace porte un nom, un statut, une description, des dates et peut etre epingle.</p>
+              <h2 className="text-base font-semibold text-ink">Espaces de travail</h2>
+              <p className="mt-0.5 text-sm text-muted">Chaque espace porte un nom, statut, description et dates.</p>
             </div>
           </div>
 
           {spaces.length === 0 ? (
-            <button onClick={() => setShowCreateSpaceModal(true)} className="flex w-full flex-col items-center justify-center gap-3 rounded-[28px] border-2 border-dashed border-line bg-white py-20 text-center transition hover:border-brand-300 hover:bg-brand-50/40">
-              <Plus className="h-8 w-8 text-muted" />
+            <button
+              onClick={() => setShowCreateSpaceModal(true)}
+              className="flex w-full flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-slate-200 bg-white py-20 text-center transition hover:border-brand-300 hover:bg-brand-50/20"
+            >
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+                <Plus className="h-5 w-5" />
+              </div>
               <div>
-                <p className="text-base font-semibold text-ink">Aucun espace pour le moment</p>
-                <p className="mt-2 text-sm text-muted">Cree ton premier espace pour structurer ce projet.</p>
+                <p className="text-sm font-semibold text-ink">Aucun espace pour le moment</p>
+                <p className="mt-1 text-xs text-muted">Créez votre premier espace pour structurer ce projet.</p>
               </div>
             </button>
           ) : (

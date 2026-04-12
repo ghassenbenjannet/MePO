@@ -5,19 +5,20 @@ interface SectionCardProps {
   subtitle?: string;
   action?: ReactNode;
   children: ReactNode;
+  className?: string;
 }
 
-export function SectionCard({ title, subtitle, action, children }: SectionCardProps) {
+export function SectionCard({ title, subtitle, action, children, className }: SectionCardProps) {
   return (
-    <section className="rounded-[28px] border border-line bg-panel p-5 shadow-panel dark:border-slate-800 dark:bg-slate-950">
-      <div className="mb-5 flex items-start justify-between gap-4">
+    <section className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${className ?? ""}`}>
+      <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-4">
         <div>
-          <h3 className="text-lg font-semibold text-ink dark:text-white">{title}</h3>
-          {subtitle ? <p className="mt-1 text-sm text-muted dark:text-slate-400">{subtitle}</p> : null}
+          <h3 className="text-sm font-semibold text-ink">{title}</h3>
+          {subtitle && <p className="mt-0.5 text-xs text-muted">{subtitle}</p>}
         </div>
         {action}
       </div>
-      {children}
+      <div className="px-6 py-5">{children}</div>
     </section>
   );
 }

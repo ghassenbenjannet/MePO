@@ -1,23 +1,29 @@
 import type { ReactNode } from "react";
+import { cn } from "../../lib/utils";
 
 interface PageHeaderProps {
   eyebrow?: string;
   title: string;
   description?: string;
   actions?: ReactNode;
+  className?: string;
 }
 
-export function PageHeader({ eyebrow, title, description, actions }: PageHeaderProps) {
+export function PageHeader({ eyebrow, title, description, actions, className }: PageHeaderProps) {
   return (
-    <div className="flex flex-col gap-4 rounded-[28px] border border-line bg-panel p-7 shadow-panel dark:border-slate-800 dark:bg-slate-950 lg:flex-row lg:items-start lg:justify-between">
-      <div className="max-w-3xl">
-        {eyebrow ? (
-          <p className="text-xs font-medium uppercase tracking-[0.24em] text-brand-600">{eyebrow}</p>
-        ) : null}
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-ink dark:text-white">{title}</h1>
-        {description ? <p className="mt-3 text-sm leading-7 text-muted dark:text-slate-400">{description}</p> : null}
+    <div className={cn("flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between", className)}>
+      <div className="max-w-2xl">
+        {eyebrow && (
+          <p className="text-xs font-semibold uppercase tracking-widest text-brand-600">{eyebrow}</p>
+        )}
+        <h1 className={cn("font-bold tracking-tight text-ink", eyebrow ? "mt-1.5 text-2xl" : "text-2xl")}>
+          {title}
+        </h1>
+        {description && (
+          <p className="mt-1 text-sm leading-relaxed text-muted">{description}</p>
+        )}
       </div>
-      {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}
+      {actions && <div className="flex flex-shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }
