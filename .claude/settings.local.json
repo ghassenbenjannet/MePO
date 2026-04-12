@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Read(//usr/local/**)",
+      "Bash(cmd.exe /c \"node --version && npm --version\")",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Users/ghass/AppData/Roaming/npm//**)"
+    ]
+  }
+}

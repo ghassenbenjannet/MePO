@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://shadow:shadow@localhost:5432/shadow_po_ai"
     redis_url: str = "redis://localhost:6379/0"
     openai_model: str = "gpt-5.4"
+    auth_secret_key: str = "change-me-shadow-po-secret"
+    auth_access_token_expire_minutes: int = 60 * 8
 
     model_config = SettingsConfigDict(
         env_file=".env",

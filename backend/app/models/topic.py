@@ -16,6 +16,7 @@ class Topic(Base):
     description: Mapped[str | None] = mapped_column(Text(), nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="active", nullable=False)
     priority: Mapped[str] = mapped_column(String(50), default="medium", nullable=False)
+    owner: Mapped[str | None] = mapped_column(String(255), nullable=True)
     teams: Mapped[list[str]] = mapped_column(JSON(), default=list, nullable=False)
     risks: Mapped[list[str]] = mapped_column(JSON(), default=list, nullable=False)
     open_questions: Mapped[list[str]] = mapped_column(JSON(), default=list, nullable=False)
