@@ -20,6 +20,7 @@ import { cn } from "../../lib/utils";
 import { useAuthStore } from "../../stores/auth-store";
 import { useNotificationsStore } from "../../stores/notifications-store";
 import { useProjects } from "../../hooks/use-projects";
+import { projectPath } from "../../lib/routes";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -34,9 +35,9 @@ function getInitials(name: string): string {
 
 const AVATAR_GRADIENTS = [
   "from-brand-400 to-brand-700",
-  "from-sky-400 to-sky-600",
-  "from-emerald-400 to-emerald-600",
-  "from-rose-400 to-rose-600",
+  "from-brand-300 to-brand-600",
+  "from-brand-500 to-brand-800",
+  "from-brand-200 to-brand-700",
 ];
 
 // ─── Section card ─────────────────────────────────────────────────────────────
@@ -55,8 +56,8 @@ function Section({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+    <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-panel)] shadow-sm">
+      <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-6 py-5">
         <div className="flex items-center gap-3">
           {Icon && (
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-50">
@@ -114,12 +115,12 @@ function Toggle({
       onClick={() => onChange(!checked)}
       className={cn(
         "relative inline-flex h-5 w-9 flex-shrink-0 rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2",
-        checked ? "bg-brand-500" : "bg-slate-200",
+        checked ? "bg-brand-600" : "bg-[var(--bg-panel-3)]",
       )}
     >
       <span
         className={cn(
-          "inline-block h-4 w-4 translate-y-0.5 rounded-full bg-white shadow-sm transition-transform duration-200",
+          "inline-block h-4 w-4 translate-y-0.5 rounded-full bg-[var(--bg-panel)] shadow-sm transition-transform duration-200",
           checked ? "translate-x-4" : "translate-x-0.5",
         )}
       />
@@ -159,7 +160,7 @@ function ActivityItem({
     return (
       <Link
         to={to}
-        className="block rounded-xl px-3 py-2.5 transition hover:bg-slate-50"
+        className="block rounded-xl px-3 py-2.5 transition hover:bg-[var(--bg-panel-2)]"
       >
         {inner}
       </Link>
@@ -178,6 +179,7 @@ function ActivityItem({
 export function ProfilePage() {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+  const updateAiPreferences = useAuthStore((state) => state.updateAiPreferences);
   const addToast = useNotificationsStore((state) => state.addToast);
   const { data: projects = [] } = useProjects();
 
@@ -192,13 +194,17 @@ export function ProfilePage() {
     (aiPrefs.response_style as string) ?? "balanced",
   );
   const [aiVerbosity, setAiVerbosity] = useState<string>(
-    (aiPrefs.verbosity as string) ?? "normal",
+    // stored as "detail_level" since v2 — fallback to legacy "verbosity" key
+    (aiPrefs.detail_level as string) ?? (aiPrefs.verbosity as string) ?? "normal",
   );
   const [showConfidence, setShowConfidence] = useState<boolean>(
     (aiPrefs.confidence_labels as boolean) ?? true,
   );
   const [showSuggestions, setShowSuggestions] = useState<boolean>(
     (aiPrefs.show_suggestions as boolean) ?? true,
+  );
+  const [chatOpenByDefault, setChatOpenByDefault] = useState<boolean>(
+    (aiPrefs.chat_open_by_default as boolean) ?? false,
   );
 
   // Interface preferences — must be declared at top level (never inside .map())
@@ -224,15 +230,26 @@ export function ProfilePage() {
     setTimeout(() => setSaved(false), 2500);
   }
 
-  function handleSaveAiPrefs() {
-    addToast({ type: "success", title: "Préférences IA sauvegardées" });
+  async function handleSaveAiPrefs() {
+    try {
+      await updateAiPreferences({
+        response_style: aiStyle,
+        detail_level: aiVerbosity,   // canonical key — was "verbosity" pre-v2
+        confidence_labels: showConfidence,
+        show_suggestions: showSuggestions,
+        chat_open_by_default: chatOpenByDefault,
+      });
+      addToast({ type: "success", title: "Préférences IA sauvegardées", description: "Actives dès le prochain message." });
+    } catch {
+      addToast({ type: "error", title: "Erreur", description: "Impossible de sauvegarder les préférences." });
+    }
   }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
 
       {/* ── Hero ─────────────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="relative overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-panel)] shadow-sm">
         {/* gradient band */}
         <div className={cn("h-24 w-full bg-gradient-to-br", gradient, "opacity-10")} />
         <div className="-mt-12 flex items-end gap-5 px-6 pb-6">
@@ -244,7 +261,7 @@ export function ProfilePage() {
             )}
           >
             {initials}
-            <button className="absolute -right-1.5 -bottom-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-muted transition hover:bg-brand-50 hover:text-brand-600">
+            <button className="absolute -right-1.5 -bottom-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-[var(--bg-panel)] bg-[var(--bg-panel-2)] text-muted transition hover:bg-brand-50 hover:text-brand-600">
               <Pencil className="h-3 w-3" />
             </button>
           </div>
@@ -281,14 +298,14 @@ export function ProfilePage() {
               <input
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-ink outline-none transition focus:border-brand-400 focus:ring-4 focus:ring-brand-100"
+                className="input py-2.5"
               />
             </FieldRow>
             <FieldRow label="Adresse email" hint="L'email ne peut pas être modifié.">
               <input
                 value={user.email}
                 disabled
-                className="w-full rounded-xl border border-slate-100 bg-slate-50 px-4 py-2.5 text-sm text-muted cursor-not-allowed"
+                className="input py-2.5 cursor-not-allowed opacity-60"
               />
             </FieldRow>
           </div>
@@ -298,7 +315,7 @@ export function ProfilePage() {
               <select
                 value={language}
                 onChange={(e) => setLanguage(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-ink outline-none transition focus:border-brand-400 focus:ring-4 focus:ring-brand-100"
+                className="input py-2.5"
               >
                 <option value="fr">Français</option>
                 <option value="en">English</option>
@@ -307,7 +324,7 @@ export function ProfilePage() {
             <FieldRow label="Rôle">
               <input
                 defaultValue="Product Owner"
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-ink outline-none transition focus:border-brand-400 focus:ring-4 focus:ring-brand-100"
+                className="input py-2.5"
               />
             </FieldRow>
           </div>
@@ -346,7 +363,7 @@ export function ProfilePage() {
             <FieldRow label="Thème">
               <select
                 defaultValue="light"
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-ink outline-none transition focus:border-brand-400 focus:ring-4 focus:ring-brand-100"
+                className="input py-2.5"
               >
                 <option value="light">Clair (Light)</option>
                 <option value="dark">Sombre (Dark) — bientôt</option>
@@ -356,7 +373,7 @@ export function ProfilePage() {
             <FieldRow label="Densité d'affichage">
               <select
                 defaultValue="comfortable"
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-ink outline-none transition focus:border-brand-400 focus:ring-4 focus:ring-brand-100"
+                className="input py-2.5"
               >
                 <option value="compact">Compact</option>
                 <option value="comfortable">Confortable</option>
@@ -365,7 +382,7 @@ export function ProfilePage() {
             </FieldRow>
           </div>
 
-          <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50 p-4">
+          <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] p-4">
             {[
               { label: "Sidebar ouverte par défaut", val: prefSidebar, set: setPrefSidebar },
               { label: "Panneau IA visible au démarrage", val: prefAiPanel, set: setPrefAiPanel },
@@ -388,7 +405,7 @@ export function ProfilePage() {
         action={
           <button
             onClick={handleSaveAiPrefs}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-ink transition hover:bg-brand-50 hover:border-brand-200 hover:text-brand-700"
+            className="btn-ghost border border-[var(--border)] px-3 py-1.5 text-xs hover:border-brand-200 hover:text-brand-600"
           >
             Enregistrer
           </button>
@@ -400,7 +417,7 @@ export function ProfilePage() {
               <select
                 value={aiStyle}
                 onChange={(e) => setAiStyle(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-ink outline-none transition focus:border-brand-400 focus:ring-4 focus:ring-brand-100"
+                className="input py-2.5"
               >
                 <option value="concise">Concis</option>
                 <option value="balanced">Équilibré</option>
@@ -412,7 +429,7 @@ export function ProfilePage() {
               <select
                 value={aiVerbosity}
                 onChange={(e) => setAiVerbosity(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-ink outline-none transition focus:border-brand-400 focus:ring-4 focus:ring-brand-100"
+                className="input py-2.5"
               >
                 <option value="minimal">Minimal</option>
                 <option value="normal">Normal</option>
@@ -421,7 +438,7 @@ export function ProfilePage() {
             </FieldRow>
           </div>
 
-          <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50 p-4">
+          <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] p-4">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-ink">Blocs de confiance</p>
@@ -441,7 +458,7 @@ export function ProfilePage() {
                 <p className="text-sm font-medium text-ink">Let's Chat ouvert par défaut</p>
                 <p className="mt-0.5 text-xs text-muted">Ouvrir le panneau IA à l'arrivée sur un espace</p>
               </div>
-              <Toggle checked={false} onChange={() => {}} />
+              <Toggle checked={chatOpenByDefault} onChange={setChatOpenByDefault} />
             </div>
           </div>
         </div>
@@ -461,20 +478,20 @@ export function ProfilePage() {
               iconCls="bg-brand-50 text-brand-600"
               label={p.name}
               meta="Projet"
-              to={`/projects/${p.id}`}
+              to={projectPath(p)}
             />
           ))}
           {projects.length === 0 && (
             <ActivityItem
               icon={LayoutGrid}
-              iconCls="bg-slate-100 text-muted"
+              iconCls="bg-[var(--bg-panel-3)] text-[var(--text-muted)]"
               label="Aucun projet récent"
               meta="Créez votre premier projet"
             />
           )}
           <ActivityItem
             icon={Sparkles}
-            iconCls="bg-violet-50 text-violet-600"
+            iconCls="bg-brand-50 text-brand-600"
             label="Conversation Shadow Core"
             meta="Analyse des risques sprint — aujourd'hui"
           />
@@ -495,7 +512,7 @@ export function ProfilePage() {
         icon={Shield}
       >
         <div className="space-y-3">
-          <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-4 py-3.5">
+          <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3.5">
             <div className="flex items-center gap-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50">
                 <Globe2 className="h-4 w-4 text-emerald-600" />
@@ -511,9 +528,9 @@ export function ProfilePage() {
             </span>
           </div>
 
-          <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-4 py-3.5 opacity-60">
+          <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3.5 opacity-60">
             <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--bg-panel-3)]">
                 <Key className="h-4 w-4 text-muted" />
               </div>
               <div>

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.topic import Topic
 from app.schemas.topic import TopicCreate, TopicRead, TopicUpdate
+from app.services.ai.workspace_cache import invalidate_workspace_cache
 
 router = APIRouter()
 
@@ -44,6 +45,7 @@ def create_topic(payload: TopicCreate, db: Session = Depends(get_db)) -> Topic:
     db.add(topic)
     db.commit()
     db.refresh(topic)
+    invalidate_workspace_cache(space_id=topic.space_id, topic_id=topic.id)
     return topic
 
 
@@ -65,6 +67,7 @@ def update_topic(topic_id: str, payload: TopicUpdate, db: Session = Depends(get_
     topic.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(topic)
+    invalidate_workspace_cache(space_id=topic.space_id, topic_id=topic.id)
     return topic
 
 
@@ -73,5 +76,7 @@ def delete_topic(topic_id: str, db: Session = Depends(get_db)) -> None:
     topic = db.query(Topic).filter(Topic.id == topic_id).first()
     if not topic:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Topic not found")
+    space_id = topic.space_id
     db.delete(topic)
     db.commit()
+    invalidate_workspace_cache(space_id=space_id, topic_id=topic_id)

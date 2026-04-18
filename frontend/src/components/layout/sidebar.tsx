@@ -1,223 +1,402 @@
 import {
-  ChevronLeft,
-  ChevronRight,
-  Clock3,
-  FolderOpen,
+  ChevronsUpDown,
+  FileText,
+  FolderKanban,
   LayoutDashboard,
+  LayoutPanelTop,
+  ListChecks,
+  ListTodo,
+  LogOut,
+  Map,
+  Plus,
+  Rows3,
+  Search,
   Settings,
-  Sparkles,
-  Star,
 } from "lucide-react";
-import { NavLink, useParams } from "react-router-dom";
-import { useProject, useProjects } from "../../hooks/use-projects";
+import type { ComponentType } from "react";
+import { Link, NavLink, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useProjects } from "../../hooks/use-projects";
 import { useSpaces } from "../../hooks/use-spaces";
+import {
+  projectPath,
+  resolveEntityBySlug,
+  spaceDocumentsPath,
+  spaceOverviewPath,
+  spaceSuiviPath,
+} from "../../lib/routes";
 import { cn } from "../../lib/utils";
+import { initials, avatarGradient } from "../../lib/format";
 import { useUiStore } from "../../stores/ui-store";
+import { useAuthStore } from "../../stores/auth-store";
 
-// ─── Status dot ───────────────────────────────────────────────────────────────
-
-function SpaceDot({ isFav, isActive }: { isFav: boolean; isActive: boolean }) {
-  return (
-    <span
-      className={cn(
-        "h-1.5 w-1.5 flex-shrink-0 rounded-full transition",
-        isActive ? "bg-brand-500" : isFav ? "bg-emerald-500" : "bg-slate-300",
-      )}
-    />
-  );
-}
-
-// ─── Nav item ─────────────────────────────────────────────────────────────────
-
-function NavItem({
+function SbNavItem({
   to,
   icon: Icon,
   label,
   collapsed,
+  count,
+  end = true,
 }: {
   to: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string }>;
   label: string;
   collapsed: boolean;
+  count?: string;
+  end?: boolean;
 }) {
   return (
     <NavLink
       to={to}
-      end
+      end={end}
       title={collapsed ? label : undefined}
       className={({ isActive }) =>
         cn(
-          "group relative flex items-center rounded-xl px-2.5 py-2 text-sm font-medium transition-colors",
-          collapsed ? "justify-center" : "gap-2.5",
+          "group flex items-center gap-3 rounded-[10px] px-3 py-2 text-[12.5px] leading-none transition",
+          collapsed && "justify-center px-0",
           isActive
-            ? "bg-brand-50 text-brand-700 shadow-sm"
-            : "text-muted hover:bg-zinc-100 hover:text-ink",
+            ? "bg-[var(--accent-soft)] text-[var(--accent-deep)]"
+            : "text-[var(--ink-3)] hover:bg-[var(--paper)] hover:text-[var(--ink)]",
         )
       }
     >
-      {({ isActive }) => (
+      <Icon className="h-[15px] w-[15px] flex-shrink-0" />
+      {!collapsed ? (
         <>
-          {isActive && !collapsed && (
-            <span className="absolute left-0 inset-y-1 w-0.5 rounded-full bg-brand-500" />
-          )}
-          <Icon className={cn("h-4 w-4 flex-shrink-0 transition-colors", collapsed ? "" : "ml-1.5")} />
-          {!collapsed && <span className="truncate">{label}</span>}
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {count ? (
+            <span className="rounded-full bg-[var(--paper-2)] px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--ink-5)]">
+              {count}
+            </span>
+          ) : null}
         </>
-      )}
+      ) : null}
     </NavLink>
   );
 }
 
-// ─── Main sidebar ─────────────────────────────────────────────────────────────
+function SbSpaceLink({
+  to,
+  label,
+  active,
+}: {
+  to: string;
+  label: string;
+  active?: boolean;
+}) {
+  return (
+    <Link
+      to={to}
+      className={cn(
+        "flex items-center gap-2 rounded-[8px] px-3 py-1.5 text-[12px] transition",
+        active
+          ? "bg-[var(--accent-soft)] text-[var(--accent-deep)]"
+          : "text-[var(--ink-4)] hover:bg-[var(--paper)] hover:text-[var(--ink)]",
+      )}
+    >
+      <span className={cn("h-1.5 w-1.5 rounded-full bg-[var(--rule)]", active && "bg-[var(--accent)]")} />
+      <span className="min-w-0 truncate">{label}</span>
+    </Link>
+  );
+}
 
-export function Sidebar() {
-  const { projectId, spaceId } = useParams<{ projectId?: string; spaceId?: string }>();
+function SbSubLink({
+  to,
+  icon: Icon,
+  label,
+  active,
+}: {
+  to: string;
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  active?: boolean;
+}) {
+  return (
+    <Link
+      to={to}
+      className={cn(
+        "flex items-center gap-2 rounded-[8px] px-3 py-1.5 text-[11.5px] transition",
+        active
+          ? "bg-[var(--paper-2)] text-[var(--ink)]"
+          : "text-[var(--ink-4)] hover:bg-[var(--paper)] hover:text-[var(--ink)]",
+      )}
+    >
+      <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+      <span className="truncate">{label}</span>
+    </Link>
+  );
+}
+
+export function Sidebar({
+  onOpenCommandPalette,
+}: {
+  onOpenCommandPalette: () => void;
+}) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { projectSlug, spaceSlug } = useParams<{
+    projectSlug?: string;
+    spaceSlug?: string;
+  }>();
+
   const { data: projects = [] } = useProjects();
-  const { data: activeProject } = useProject(projectId);
+  const activeProject = resolveEntityBySlug(projects, projectSlug);
+  const projectId = activeProject?.id;
   const { data: projectSpaces = [] } = useSpaces(projectId);
-  const collapsed = useUiStore((s) => s.sidebarCollapsed);
-  const toggle = useUiStore((s) => s.toggleSidebarCollapsed);
+  const activeSpace = resolveEntityBySlug(projectSpaces, spaceSlug);
+  const spaceId = activeSpace?.id;
 
-  const favoriteProjects = projects.filter(
-    (p) => p.status === "active",
-  ).slice(0, 3);
+  const collapsed = useUiStore((s) => s.sidebarCollapsed);
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
+
+  const userInitials = user?.full_name ? initials(user.full_name) : "?";
+  const userGradient = avatarGradient(user?.full_name ?? "MePO");
+  const displayProjects = projects.slice(0, 8);
+  const currentSuiviView = new URLSearchParams(location.search).get("view") ?? "overview";
+  const isSuiviPath = location.pathname.endsWith("/suivi");
+  const projectRef = activeProject ?? { id: projectId ?? "", name: projectSlug ?? "" };
+  const spaceRef = activeSpace ?? { id: spaceId ?? "", name: spaceSlug ?? "" };
+  const favoriteKanbanLink = activeSpace
+    ? spaceSuiviPath(projectRef, spaceRef, "kanban")
+    : "/";
+  const favoriteDocumentsLink = activeSpace
+    ? spaceDocumentsPath(projectRef, spaceRef)
+    : "/";
 
   return (
     <aside
       className={cn(
-        "hidden flex-shrink-0 flex-col border-r border-slate-100 bg-white transition-[width] duration-200 xl:flex",
-        collapsed ? "w-[56px]" : "w-64",
+        "hidden flex-shrink-0 border-r border-[var(--rule)] bg-[var(--paper-2)] xl:flex",
+        collapsed ? "w-[78px]" : "w-[280px]",
       )}
     >
-      {/* Header */}
-      <div className="flex h-14 items-center border-b border-slate-100 px-3">
-        {!collapsed && (
-          <span className="flex-1 truncate px-1 text-[11px] font-semibold uppercase tracking-widest text-muted">
-            Navigation
-          </span>
-        )}
+      <div className="flex min-h-0 flex-1 flex-col px-4 py-4">
         <button
-          onClick={toggle}
-          title={collapsed ? "Ouvrir la navigation" : "Réduire"}
+          type="button"
+          onClick={() => navigate("/")}
           className={cn(
-            "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 text-muted transition hover:bg-slate-50 hover:text-ink",
-            collapsed && "mx-auto",
+            "flex items-center gap-3 rounded-[14px] border border-[var(--rule)] bg-[var(--paper)] px-4 py-4 text-left shadow-[var(--shadow-xs)] transition hover:border-[var(--ink-5)]",
+            collapsed && "justify-center px-0",
           )}
         >
-          {collapsed ? (
-            <ChevronRight className="h-3.5 w-3.5" />
-          ) : (
-            <ChevronLeft className="h-3.5 w-3.5" />
-          )}
+          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[10px] bg-[var(--accent)] text-[22px] leading-none text-white shadow-[var(--shadow-xs)]">
+            <span className="font-display italic">M</span>
+          </span>
+          {!collapsed ? (
+            <>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13.5px] font-semibold text-[var(--ink)]">MePO</span>
+                <span className="block truncate text-[11px] text-[var(--ink-4)]">
+                  {activeProject?.name ?? "Equipe produit"}
+                </span>
+              </span>
+              <ChevronsUpDown className="h-4 w-4 flex-shrink-0 text-[var(--ink-5)]" />
+            </>
+          ) : null}
         </button>
-      </div>
 
-      {/* Nav */}
-      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
-        {/* Fixed links */}
-        <NavItem to="/" icon={LayoutDashboard} label="Tableau de bord" collapsed={collapsed} />
+        {!collapsed ? (
+          <button
+            type="button"
+            onClick={onOpenCommandPalette}
+            className="mt-4 flex items-center gap-2 rounded-[12px] border border-[var(--rule)] bg-[var(--paper)] px-3 py-2.5 text-left text-[12.5px] text-[var(--ink-4)] shadow-[var(--shadow-xs)] transition hover:border-[var(--ink-5)] hover:text-[var(--ink)]"
+          >
+            <Search className="h-3.5 w-3.5 flex-shrink-0" />
+            <span className="min-w-0 flex-1 truncate">Rechercher...</span>
+            <span className="rounded border border-[var(--rule)] bg-[var(--paper-2)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ink-5)]">
+              Ctrl K
+            </span>
+          </button>
+        ) : null}
 
-        {/* Separator */}
-        <div className={cn("my-2 border-t border-slate-100", collapsed && "mx-1")} />
-
-        {/* Recents */}
-        {!collapsed && (
-          <p className="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-widest text-muted/70">
-            Récents
-          </p>
-        )}
-        {collapsed && (
-          <div className="mb-1 flex justify-center">
-            <Clock3 className="h-3.5 w-3.5 text-muted/60" />
+        <div className="mt-5 flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <div className="space-y-1">
+            <SbNavItem to="/" icon={LayoutDashboard} label="Cockpit" collapsed={collapsed} end />
           </div>
-        )}
-        {projects.slice(0, 3).map((project) => {
-          const isCurrentProject = project.id === projectId;
-          return (
-            <div key={`recent-${project.id}`}>
-              <NavLink
-                to={`/projects/${project.id}`}
-                title={collapsed ? project.name : undefined}
-                className={({ isActive }) =>
-                  cn(
-                    "relative flex items-center rounded-xl px-2.5 py-2 text-sm transition-colors",
-                    collapsed ? "justify-center" : "gap-2.5",
-                    isActive || isCurrentProject
-                      ? "bg-brand-50 font-medium text-brand-700"
-                      : "text-muted hover:bg-zinc-100 hover:text-ink",
-                  )
-                }
-              >
-                <FolderOpen className="h-4 w-4 flex-shrink-0" />
-                {!collapsed && <span className="truncate">{project.name}</span>}
-              </NavLink>
 
-              {/* Spaces tree */}
-              {!collapsed && isCurrentProject && (
-                <div className="mt-1 mb-1 ml-3 space-y-0.5 rounded-xl border border-slate-100 bg-slate-50/70 p-1.5">
-                  <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-widest text-muted/60">
-                    {activeProject?.name ?? "Projet"} · Espaces
-                  </p>
-                  {projectSpaces.length > 0 ? (
-                    projectSpaces.map((space) => {
-                      const isActiveSpace = space.id === spaceId;
-                      return (
-                        <NavLink
-                          key={space.id}
-                          to={`/projects/${project.id}/spaces/${space.id}`}
-                          className={cn(
-                            "relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm transition-colors",
-                            isActiveSpace
-                              ? "bg-white font-semibold text-brand-700 shadow-sm ring-1 ring-brand-100"
-                              : "text-muted hover:bg-white/80 hover:text-ink",
-                          )}
-                        >
-                          <SpaceDot isFav={space.is_favorite} isActive={isActiveSpace} />
-                          <span className="truncate">{space.name}</span>
-                        </NavLink>
-                      );
-                    })
-                  ) : (
-                    <p className="px-2 py-1.5 text-xs text-muted/60">Aucun espace</p>
-                  )}
-                </div>
-              )}
+          <div className="mt-6">
+            {!collapsed ? (
+              <div className="mb-2 flex items-center justify-between px-2">
+                <span className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-[var(--ink-5)]">Portefeuille</span>
+                <button
+                  type="button"
+                  onClick={() => navigate("/")}
+                  className="flex h-5 w-5 items-center justify-center rounded-full text-[var(--ink-5)] transition hover:bg-[var(--paper)] hover:text-[var(--ink)]"
+                  title="Nouveau projet"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : null}
+
+            <div className="space-y-1">
+              {displayProjects.map((project) => {
+                const isActiveProject = project.id === projectId;
+                const projectLetter = initials(project.name).charAt(0);
+
+                return (
+                  <div key={project.id} className="space-y-1">
+                    <NavLink
+                      to={projectPath(project)}
+                      title={collapsed ? project.name : undefined}
+                      className={({ isActive }) =>
+                        cn(
+                          "flex items-center gap-3 rounded-[10px] px-3 py-2 text-[12.5px] transition",
+                          collapsed && "justify-center px-0",
+                          isActive || isActiveProject
+                            ? "bg-[var(--accent-soft)] text-[var(--accent-deep)]"
+                            : "text-[var(--ink-3)] hover:bg-[var(--paper)] hover:text-[var(--ink)]",
+                        )
+                      }
+                    >
+                      <span
+                        className={cn(
+                          "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-[8px] border border-[var(--rule)] bg-[var(--paper)] font-mono text-[10px] font-semibold text-[var(--ink-4)]",
+                          isActiveProject && "border-[var(--accent-soft)] bg-[var(--paper)] text-[var(--accent-deep)]",
+                        )}
+                      >
+                        {projectLetter}
+                      </span>
+                      {!collapsed ? (
+                        <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                      ) : null}
+                    </NavLink>
+
+                    {!collapsed && isActiveProject && projectSpaces.length > 0 ? (
+                      <div className="ml-5 space-y-1 border-l border-[var(--rule)] pl-3">
+                        {projectSpaces.map((space) => {
+                          const isActiveSpace = space.id === spaceId;
+                          const activeProjectRef = project;
+                          const activeSpaceRef = space;
+                          return (
+                            <div key={space.id} className="space-y-1">
+                              <SbSpaceLink
+                                to={spaceOverviewPath(activeProjectRef, activeSpaceRef)}
+                                label={space.name}
+                                active={isActiveSpace}
+                              />
+
+                              {isActiveSpace ? (
+                                <div className="ml-3 space-y-1 border-l border-[var(--rule)] pl-3">
+                                  <SbSubLink
+                                    to={spaceSuiviPath(activeProjectRef, activeSpaceRef, "overview")}
+                                    icon={LayoutPanelTop}
+                                    label="Cockpit"
+                                    active={isSuiviPath && currentSuiviView === "overview"}
+                                  />
+                                  <SbSubLink
+                                    to={spaceSuiviPath(activeProjectRef, activeSpaceRef, "topics")}
+                                    icon={Rows3}
+                                    label="Topics"
+                                    active={isSuiviPath && currentSuiviView === "topics"}
+                                  />
+                                  <SbSubLink
+                                    to={spaceSuiviPath(activeProjectRef, activeSpaceRef, "kanban")}
+                                    icon={FolderKanban}
+                                    label="Kanban"
+                                    active={isSuiviPath && currentSuiviView === "kanban"}
+                                  />
+                                  <SbSubLink
+                                    to={spaceSuiviPath(activeProjectRef, activeSpaceRef, "tasks")}
+                                    icon={ListChecks}
+                                    label="Taches"
+                                    active={isSuiviPath && currentSuiviView === "tasks"}
+                                  />
+                                  <SbSubLink
+                                    to={spaceSuiviPath(activeProjectRef, activeSpaceRef, "backlog")}
+                                    icon={ListTodo}
+                                    label="Backlog"
+                                    active={isSuiviPath && currentSuiviView === "backlog"}
+                                  />
+                                  <SbSubLink
+                                    to={spaceSuiviPath(activeProjectRef, activeSpaceRef, "roadmap")}
+                                    icon={Map}
+                                    label="Roadmap"
+                                    active={isSuiviPath && currentSuiviView === "roadmap"}
+                                  />
+                                  <SbSubLink
+                                    to={spaceDocumentsPath(activeProjectRef, activeSpaceRef)}
+                                    icon={FileText}
+                                    label="Documents"
+                                    active={location.pathname.endsWith("/documents")}
+                                  />
+                                </div>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+          </div>
 
-        {/* Separator */}
-        {!collapsed && favoriteProjects.length > 0 && (
-          <>
-            <div className="my-2 border-t border-slate-100" />
-            <p className="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-widest text-muted/70">
-              Favoris
-            </p>
-            {favoriteProjects.map((p) => (
-              <NavLink
-                key={`fav-${p.id}`}
-                to={`/projects/${p.id}`}
-                className={({ isActive }) =>
-                  cn(
-                    "flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm transition-colors",
-                    isActive
-                      ? "bg-amber-50 font-medium text-amber-700"
-                      : "text-muted hover:bg-slate-50 hover:text-ink",
-                  )
-                }
+          {!collapsed && activeSpace ? (
+            <div className="mt-6">
+              <div className="mb-2 px-2 font-mono text-[10.5px] uppercase tracking-[0.16em] text-[var(--ink-5)]">
+                Favoris
+              </div>
+              <div className="space-y-1">
+                <SbNavItem to={favoriteDocumentsLink} icon={FileText} label="Documents" collapsed={false} end={false} />
+                <SbNavItem to={favoriteKanbanLink} icon={FolderKanban} label="Projet Actif" collapsed={false} end={false} />
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-auto pt-5">
+            <SbNavItem to="/settings" icon={Settings} label="Parametres" collapsed={collapsed} />
+          </div>
+        </div>
+
+        <div className="mt-4 border-t border-[var(--rule)] pt-4">
+          {collapsed ? (
+            <button
+              type="button"
+              onClick={() => navigate("/profile")}
+              title={user?.full_name ?? "Profil"}
+              className={cn(
+                "mx-auto flex h-10 w-10 items-center justify-center rounded-full text-[11px] font-bold text-white transition hover:scale-[1.04]",
+                `bg-gradient-to-br ${userGradient}`,
+              )}
+            >
+              {userInitials}
+            </button>
+          ) : (
+            <div className="flex items-center gap-3 rounded-[12px] border border-[var(--rule)] bg-[var(--paper)] px-3 py-2.5 shadow-[var(--shadow-xs)]">
+              <button
+                type="button"
+                onClick={() => navigate("/profile")}
+                className={cn(
+                  "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white",
+                  `bg-gradient-to-br ${userGradient}`,
+                )}
               >
-                <Star className="h-4 w-4 flex-shrink-0 text-amber-400" />
-                <span className="truncate">{p.name}</span>
-              </NavLink>
-            ))}
-          </>
-        )}
-      </nav>
-
-      {/* Footer */}
-      <div className="border-t border-slate-100 p-2 space-y-0.5">
-        <NavItem to="/profile" icon={Sparkles} label="Shadow PO AI" collapsed={collapsed} />
-        <NavItem to="/settings" icon={Settings} label="Paramètres" collapsed={collapsed} />
+                {userInitials}
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[12.5px] font-semibold text-[var(--ink)]">
+                  {user?.full_name ?? "Utilisateur"}
+                </p>
+                <p className="truncate text-[10.5px] text-[var(--ink-4)]">
+                  {user?.email ?? "Product Manager"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  navigate("/login");
+                }}
+                title="Se deconnecter"
+                className="flex h-8 w-8 items-center justify-center rounded-[10px] text-[var(--ink-4)] transition hover:bg-[var(--paper-2)] hover:text-[var(--hot)]"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </aside>
   );

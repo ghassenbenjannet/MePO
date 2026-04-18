@@ -11,17 +11,13 @@ interface PageHeaderProps {
 
 export function PageHeader({ eyebrow, title, description, actions, className }: PageHeaderProps) {
   return (
-    <div className={cn("flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between", className)}>
-      <div className="max-w-2xl">
-        {eyebrow && (
-          <p className="text-xs font-semibold uppercase tracking-widest text-brand-600">{eyebrow}</p>
-        )}
-        <h1 className={cn("font-bold tracking-tight text-ink", eyebrow ? "mt-1.5 text-2xl" : "text-2xl")}>
+    <div className={cn("flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between", className)}>
+      <div className="max-w-3xl">
+        {eyebrow ? <p className="panel-eyebrow">{eyebrow}</p> : null}
+        <h1 className={cn("font-display font-bold tracking-[-0.04em] text-ink", eyebrow ? "mt-2 text-[clamp(2rem,2.8vw,2.5rem)]" : "text-[clamp(2rem,2.8vw,2.5rem)]")}>
           {title}
         </h1>
-        {description && (
-          <p className="mt-1 text-sm leading-relaxed text-muted">{description}</p>
-        )}
+        {description ? <p className="mt-3 max-w-2xl text-sm leading-7 text-muted">{description}</p> : null}
       </div>
       {actions && <div className="flex flex-shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </div>

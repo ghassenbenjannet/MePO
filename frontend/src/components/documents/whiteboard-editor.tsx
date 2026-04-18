@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link2, Pencil, Plus, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { TldrawWhiteboardEditor } from "./tldraw-whiteboard-editor";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -216,9 +217,12 @@ interface WhiteboardEditorProps {
   content: string;
   onChange?: (json: string) => void;
   readOnly?: boolean;
+  title?: string;
+  onBack?: () => void;
+  saveStatus?: "idle" | "pending" | "saved";
 }
 
-export function WhiteboardEditor({ content, onChange, readOnly = false }: WhiteboardEditorProps) {
+export function LegacyWhiteboardEditor({ content, onChange, readOnly = false }: WhiteboardEditorProps) {
   const [data, setData] = useState<WhiteboardData>(() => parseData(content));
   const [history, setHistory] = useState<WhiteboardData[]>([]);
 
@@ -508,10 +512,15 @@ export function WhiteboardEditor({ content, onChange, readOnly = false }: Whiteb
 
       {/* ── Toolbar ──────────────────────────────────────────────── */}
       {!readOnly && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-panel)] px-4 py-2">
+        <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border)] bg-gradient-to-r from-white via-white to-slate-50/80 px-4 py-3">
+          <div className="mr-2 rounded-2xl border border-[var(--border)] bg-white px-4 py-3 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-brand-600">Canvas</p>
+            <p className="mt-1 font-[var(--font-display)] text-sm font-bold tracking-tight text-[var(--text-strong)]">Atelier collaboratif</p>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">Post-its, relations et cadrage visuel dans un meme espace.</p>
+          </div>
 
           {/* Color dots */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 rounded-2xl border border-[var(--border)] bg-white px-3 py-2 shadow-sm">
             {COLORS.map((c) => (
               <button
                 key={c} type="button" title={c}
@@ -529,7 +538,7 @@ export function WhiteboardEditor({ content, onChange, readOnly = false }: Whiteb
 
           <button
             type="button" onClick={addNote}
-            className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-panel-2)] px-3 py-1.5 text-xs font-medium text-[var(--text-strong)] transition hover:bg-[var(--bg-panel-3)]"
+            className="flex items-center gap-1.5 rounded-2xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-[var(--text-strong)] shadow-sm transition hover:border-brand-200 hover:text-brand-600"
           >
             <Plus className="h-3.5 w-3.5" />Post-it
           </button>
@@ -541,10 +550,10 @@ export function WhiteboardEditor({ content, onChange, readOnly = false }: Whiteb
             type="button"
             onClick={() => { setConnectMode((v) => !v); setConnectFrom(null); setPreviewCursor(null); }}
             className={cn(
-              "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition",
+              "flex items-center gap-1.5 rounded-2xl border px-3 py-2 text-xs font-semibold shadow-sm transition",
               connectMode
                 ? "border-[var(--brand)] bg-[var(--brand)] text-white"
-                : "border-[var(--border)] bg-[var(--bg-panel-2)] text-[var(--text-strong)] hover:bg-[var(--bg-panel-3)]",
+                : "border-[var(--border)] bg-white text-[var(--text-strong)] hover:border-brand-200 hover:text-brand-600",
             )}
           >
             <Link2 className="h-3.5 w-3.5" />
@@ -555,7 +564,7 @@ export function WhiteboardEditor({ content, onChange, readOnly = false }: Whiteb
             <>
               <select
                 value={connectType} onChange={(e) => setConnectType(e.target.value as ConnectionType)}
-                className="rounded-lg border border-[var(--border)] bg-[var(--bg-panel-2)] px-2 py-1.5 text-xs text-[var(--text-strong)] outline-none"
+                className="rounded-2xl border border-[var(--border)] bg-white px-3 py-2 text-xs text-[var(--text-strong)] outline-none shadow-sm"
               >
                 {CONN_TYPES.map((t) => (
                   <option key={t} value={t}>{CONN_INFO[t].short} {CONN_INFO[t].label}</option>
@@ -564,7 +573,7 @@ export function WhiteboardEditor({ content, onChange, readOnly = false }: Whiteb
               <button
                 type="button" title="Annuler"
                 onClick={() => { setConnectMode(false); setConnectFrom(null); setPreviewCursor(null); }}
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--border)] transition hover:bg-[var(--bg-panel-3)]"
+                className="flex h-9 w-9 items-center justify-center rounded-2xl border border-[var(--border)] bg-white shadow-sm transition hover:border-brand-200 hover:text-brand-600"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -577,7 +586,7 @@ export function WhiteboardEditor({ content, onChange, readOnly = false }: Whiteb
               <button
                 type="button"
                 onClick={() => deleteConn(selectedConnId)}
-                className="flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-400"
+                className="flex items-center gap-1.5 rounded-2xl border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 shadow-sm transition hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-400"
               >
                 <Trash2 className="h-3.5 w-3.5" />Supprimer liaison
               </button>
@@ -585,20 +594,20 @@ export function WhiteboardEditor({ content, onChange, readOnly = false }: Whiteb
           )}
 
           {/* Right side controls */}
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-2 rounded-[28px] border border-[var(--border)] bg-white px-2 py-1.5 shadow-sm">
             <button
               type="button" onClick={() => setSnapGrid((v) => !v)}
               className={cn(
-                "rounded-lg border px-2.5 py-1.5 text-xs font-medium transition",
+                "rounded-2xl border px-3 py-2 text-xs font-semibold transition",
                 snapGrid
                   ? "border-[var(--brand)] bg-[var(--brand)]/10 text-[var(--brand)]"
-                  : "border-[var(--border)] bg-[var(--bg-panel-2)] text-[var(--text-muted)] hover:bg-[var(--bg-panel-3)]",
+                  : "border-[var(--border)] bg-white text-[var(--text-muted)] hover:border-brand-200 hover:text-brand-600",
               )}
             >Grille</button>
 
             <button
               type="button" onClick={undo} disabled={!history.length} title="Annuler (Ctrl+Z)"
-              className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-panel-2)] transition hover:bg-[var(--bg-panel-3)] disabled:opacity-30"
+              className="flex h-9 w-9 items-center justify-center rounded-2xl border border-[var(--border)] bg-white transition hover:border-brand-200 hover:text-brand-600 disabled:opacity-30"
             >
               <RotateCcw className="h-3.5 w-3.5" />
             </button>
@@ -607,25 +616,25 @@ export function WhiteboardEditor({ content, onChange, readOnly = false }: Whiteb
 
             <button
               type="button" onClick={() => zoomBy(1 / 1.2)} title="Dézoomer"
-              className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-panel-2)] transition hover:bg-[var(--bg-panel-3)]"
+              className="flex h-9 w-9 items-center justify-center rounded-2xl border border-[var(--border)] bg-white transition hover:border-brand-200 hover:text-brand-600"
             >
               <ZoomOut className="h-3.5 w-3.5" />
             </button>
             <button
               type="button" onClick={resetView} title="Réinitialiser vue"
-              className="min-w-[3.2rem] rounded-lg border border-[var(--border)] bg-[var(--bg-panel-2)] px-1.5 py-1 text-center font-mono text-xs transition hover:bg-[var(--bg-panel-3)]"
+              className="min-w-[3.8rem] rounded-2xl border border-[var(--border)] bg-white px-2 py-2 text-center font-mono text-xs transition hover:border-brand-200 hover:text-brand-600"
             >
               {Math.round(zoom * 100)}%
             </button>
             <button
               type="button" onClick={() => zoomBy(1.2)} title="Zoomer"
-              className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-panel-2)] transition hover:bg-[var(--bg-panel-3)]"
+              className="flex h-9 w-9 items-center justify-center rounded-2xl border border-[var(--border)] bg-white transition hover:border-brand-200 hover:text-brand-600"
             >
               <ZoomIn className="h-3.5 w-3.5" />
             </button>
             <button
               type="button" onClick={fitScreen}
-              className="rounded-lg border border-[var(--border)] bg-[var(--bg-panel-2)] px-2.5 py-1.5 text-xs transition hover:bg-[var(--bg-panel-3)]"
+              className="rounded-2xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold transition hover:border-brand-200 hover:text-brand-600"
             >Ajuster</button>
           </div>
         </div>
@@ -634,7 +643,7 @@ export function WhiteboardEditor({ content, onChange, readOnly = false }: Whiteb
       {/* ── Canvas ──────────────────────────────────────────────── */}
       <div
         ref={containerRef}
-        className="relative flex-1 overflow-hidden bg-[var(--bg-panel-2)]"
+        className="relative flex-1 overflow-hidden bg-gradient-to-br from-slate-50 via-white to-brand-50/30"
         style={{ cursor: canvasCursor, ...gridBgStyle }}
         onMouseDown={onCanvasMD}
         onMouseMove={onCanvasMM}
@@ -910,4 +919,8 @@ export function WhiteboardEditor({ content, onChange, readOnly = false }: Whiteb
       </div>
     </div>
   );
+}
+
+export function WhiteboardEditor(props: WhiteboardEditorProps) {
+  return <TldrawWhiteboardEditor {...props} />;
 }

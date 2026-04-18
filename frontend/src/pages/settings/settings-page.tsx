@@ -26,7 +26,7 @@ function SettingRow({
   badge?: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-3.5 border-b border-slate-100 last:border-0">
+    <div className="flex items-center justify-between gap-4 border-b border-[var(--border)] py-3.5 last:border-0">
       <div>
         <p className="text-sm font-medium text-ink">{label}</p>
         {description && <p className="mt-0.5 text-xs text-muted">{description}</p>}
@@ -57,8 +57,8 @@ function SettingsSection({
   children: React.ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+    <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-panel)] shadow-sm">
+      <div className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-4">
         <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-50">
           <Icon className="h-4 w-4 text-brand-600" />
         </div>
@@ -80,7 +80,7 @@ export function SettingsPage() {
       <PageHeader
         eyebrow="Configuration"
         title="Paramètres"
-        description="Paramètres globaux du workspace Shadow PO AI."
+        description="Paramètres globaux de l'application."
         actions={
           <Link to="/profile" className="btn-secondary text-sm">
             <Sparkles className="h-4 w-4" />
@@ -100,7 +100,7 @@ export function SettingsPage() {
 
         {/* IA */}
         <SettingsSection icon={Bot} title="Shadow PO AI" subtitle="Moteur IA et modèle actif">
-          <SettingRow label="Modèle IA" value="gpt-4o-mini" badge="Actif" />
+          <SettingRow label="Modèle IA" value="Configuré par OPENAI_MODEL" badge="Env" />
           <SettingRow label="Contexte" description="Injection espace + sujets + tickets" value="Activé" />
           <SettingRow label="Modes" description="8 modes Shadow Core disponibles" value="Tous actifs" />
           <SettingRow label="Fallback" description="Mode démo si clé absente" badge="OK" />
@@ -126,7 +126,7 @@ export function SettingsPage() {
         <SettingsSection icon={LayoutGrid} title="Workspace" subtitle="Structure et organisation">
           <SettingRow label="Structure" value="Projets → Espaces → Sujets" />
           <SettingRow label="Sidebar" value="Navigation contextuelle" />
-          <SettingRow label="Right dock" description="Panneau IA intégré" value="Activé" />
+          <SettingRow label="Panneau latéral" description="Volet de détail et d'assistance" value="Activé" />
           <SettingRow label="Documents" description="Pages · Whiteboard · Mermaid" value="Actifs" />
         </SettingsSection>
 

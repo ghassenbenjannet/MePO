@@ -10,6 +10,12 @@ from app.models.comment import Comment
 from app.models.document import Document
 from app.models.membership import Membership
 from app.models.project import Project
+from app.models.project_knowledge_document import ProjectKnowledgeDocument
+from app.models.project_knowledge_settings import ProjectKnowledgeSettings
+from app.models.project_knowledge_sync_item import ProjectKnowledgeSyncItem
+from app.models.project_skill import ProjectSkill
+from app.models.project_skill_settings import ProjectSkillSettings
+from app.models.project_skill_version import ProjectSkillVersion
 from app.models.space import Space
 from app.models.ticket import Ticket
 from app.models.topic import Topic
@@ -23,6 +29,14 @@ router = APIRouter()
 def delete_project_descendants(db: Session, project_id: str) -> None:
     space_ids = [row[0] for row in db.query(Space.id).filter(Space.project_id == project_id).all()]
     if not space_ids:
+        db.query(ProjectKnowledgeSyncItem).filter(ProjectKnowledgeSyncItem.project_id == project_id).delete(synchronize_session=False)
+        db.query(ProjectKnowledgeDocument).filter(ProjectKnowledgeDocument.project_id == project_id).delete(synchronize_session=False)
+        db.query(ProjectKnowledgeSettings).filter(ProjectKnowledgeSettings.project_id == project_id).delete(synchronize_session=False)
+        skill_ids = [row[0] for row in db.query(ProjectSkill.id).filter(ProjectSkill.project_id == project_id).all()]
+        if skill_ids:
+            db.query(ProjectSkillVersion).filter(ProjectSkillVersion.skill_id.in_(skill_ids)).delete(synchronize_session=False)
+            db.query(ProjectSkill).filter(ProjectSkill.id.in_(skill_ids)).delete(synchronize_session=False)
+        db.query(ProjectSkillSettings).filter(ProjectSkillSettings.project_id == project_id).delete(synchronize_session=False)
         db.query(Membership).filter(Membership.project_id == project_id).delete(synchronize_session=False)
         return
 
@@ -49,6 +63,14 @@ def delete_project_descendants(db: Session, project_id: str) -> None:
         db.query(Topic).filter(Topic.id.in_(topic_ids)).delete(synchronize_session=False)
 
     db.query(Space).filter(Space.id.in_(space_ids)).delete(synchronize_session=False)
+    db.query(ProjectKnowledgeSyncItem).filter(ProjectKnowledgeSyncItem.project_id == project_id).delete(synchronize_session=False)
+    db.query(ProjectKnowledgeDocument).filter(ProjectKnowledgeDocument.project_id == project_id).delete(synchronize_session=False)
+    db.query(ProjectKnowledgeSettings).filter(ProjectKnowledgeSettings.project_id == project_id).delete(synchronize_session=False)
+    skill_ids = [row[0] for row in db.query(ProjectSkill.id).filter(ProjectSkill.project_id == project_id).all()]
+    if skill_ids:
+        db.query(ProjectSkillVersion).filter(ProjectSkillVersion.skill_id.in_(skill_ids)).delete(synchronize_session=False)
+        db.query(ProjectSkill).filter(ProjectSkill.id.in_(skill_ids)).delete(synchronize_session=False)
+    db.query(ProjectSkillSettings).filter(ProjectSkillSettings.project_id == project_id).delete(synchronize_session=False)
     db.query(Membership).filter(Membership.project_id == project_id).delete(synchronize_session=False)
 
 

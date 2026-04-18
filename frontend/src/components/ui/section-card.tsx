@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Panel, PanelContent, PanelHeader, PanelHeading } from "./panel";
 
 interface SectionCardProps {
   title: string;
@@ -10,15 +11,12 @@ interface SectionCardProps {
 
 export function SectionCard({ title, subtitle, action, children, className }: SectionCardProps) {
   return (
-    <section className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${className ?? ""}`}>
-      <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-4">
-        <div>
-          <h3 className="text-sm font-semibold text-ink">{title}</h3>
-          {subtitle && <p className="mt-0.5 text-xs text-muted">{subtitle}</p>}
-        </div>
+    <Panel className={className}>
+      <PanelHeader>
+        <PanelHeading title={title} description={subtitle} className="max-w-2xl [&_.panel-title]:mt-0 [&_.panel-title]:text-base" />
         {action}
-      </div>
-      <div className="px-6 py-5">{children}</div>
-    </section>
+      </PanelHeader>
+      <PanelContent>{children}</PanelContent>
+    </Panel>
   );
 }
