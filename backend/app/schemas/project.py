@@ -8,6 +8,7 @@ class ProjectCreate(BaseModel):
     status: str = "active"
     description: str | None = None
     image_url: str | None = None
+    openai_strategy: str = "responses_plus_conversation"
 
 
 class ProjectUpdate(BaseModel):
@@ -15,6 +16,8 @@ class ProjectUpdate(BaseModel):
     status: str | None = None
     description: str | None = None
     image_url: str | None = None
+    openai_strategy: str | None = None
+    active_skill_version_id: str | None = None
 
 
 class ProjectRead(BaseModel):
@@ -25,4 +28,6 @@ class ProjectRead(BaseModel):
     status: str = "active"
     description: str | None = None
     image_url: str | None = None
+    openai_strategy: str = "responses_plus_conversation"
+    active_skill_version_id: str | None = None
     created_at: datetime | None = None

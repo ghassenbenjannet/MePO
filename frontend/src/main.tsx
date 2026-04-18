@@ -8,11 +8,16 @@ import "./app/styles.css";
 const queryClient = new QueryClient();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AppRouter />
-      </BrowserRouter>
-    </QueryClientProvider>
-  </React.StrictMode>,
+    <React.StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
+          <AppRouter />
+        </BrowserRouter>
+      </QueryClientProvider>
+    </React.StrictMode>,
 );

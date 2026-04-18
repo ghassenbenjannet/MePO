@@ -37,8 +37,9 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://shadow:shadow@postgres:5432/shadow_po_ai
       REDIS_URL: redis://redis:6379/0
-      OPENAI_MODEL: gpt-4o-mini
+      OPENAI_MODEL: ${OPENAI_MODEL}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      SHADOW_RUNTIME_MODE: ${SHADOW_RUNTIME_MODE:-mepo}
     ports:
       - "8000:8000"
     depends_on:

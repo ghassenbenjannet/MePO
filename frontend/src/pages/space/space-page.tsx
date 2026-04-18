@@ -1,34 +1,49 @@
 import type { Dispatch, SetStateAction } from "react";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
-  BarChart3,
   CheckCircle2,
+  ChevronRight,
   FileText,
   FolderKanban,
   Layers,
-  Loader2,
   Map,
   MessageSquareText,
   Pencil,
   Plus,
+  Search,
   Sparkles,
   Table2,
 } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
-import { LetsChat } from "../../components/chat/lets-chat";
-import { DocumentsTab } from "../../components/documents/documents-tab";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { KanbanPage } from "../../components/kanban/kanban-page";
+import { TicketModal as SharedTicketModal } from "../../components/tickets/ticket-modal";
+import { SpaceOverviewHeader } from "../../components/space/space-overview-header";
+import { SpaceSuiviTabs } from "../../components/space/space-suivi-tabs";
+import { MiniTiptap, linesToTiptapHtml, textToTiptapHtml, tiptapHtmlToLines, tiptapHtmlToText } from "../../components/ui/mini-tiptap";
+import { RowSkeleton } from "../../components/ui/skeleton";
+import { StatCard } from "../../components/ui/stat-card";
 import { useDocuments } from "../../hooks/use-documents";
-import { useSpace } from "../../hooks/use-spaces";
+import { useProjects } from "../../hooks/use-projects";
+import { useSpaces } from "../../hooks/use-spaces";
 import { useCreateTicket, useTickets, useUpdateTicket } from "../../hooks/use-tickets";
 import { useCreateTopic, useTopics, useUpdateTopic } from "../../hooks/use-topics";
+import {
+  type SpaceSuiviView,
+  isLegacyEntitySlug,
+  isSpaceSuiviView,
+  resolveEntityBySlug,
+  spaceChatPath,
+  spaceDocumentsPath,
+  spaceSuiviPath,
+  topicPath,
+} from "../../lib/routes";
 import { cn } from "../../lib/utils";
 import type { Document, Ticket, Topic } from "../../types/domain";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type MainTabId = "suivi" | "documents" | "chat";
-type SuiviSubTabId = "overview" | "topics" | "kanban" | "backlog" | "roadmap";
+type SuiviSubTabId = SpaceSuiviView;
 
 type TicketPatternForm = {
   object_under_test: string;
@@ -67,28 +82,15 @@ type TicketPatternForm = {
   raised_issues: string;
 };
 
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const MAIN_TABS = [
-  { id: "suivi" as MainTabId, label: "1 - Suivi", icon: FolderKanban },
-  { id: "documents" as MainTabId, label: "2 - Documents", icon: FileText },
-  { id: "chat" as MainTabId, label: "3 - Let's Chat", icon: MessageSquareText },
-];
-
-const SUIVI_SUBTABS = [
-  { id: "overview" as SuiviSubTabId, label: "Vue d'ensemble", icon: BarChart3 },
-  { id: "topics" as SuiviSubTabId, label: "Topics", icon: Layers },
-  { id: "kanban" as SuiviSubTabId, label: "Kanban", icon: FolderKanban },
-  { id: "backlog" as SuiviSubTabId, label: "Backlog", icon: Table2 },
-  { id: "roadmap" as SuiviSubTabId, label: "Roadmap", icon: Map },
-];
-
 const KANBAN_COLS = [
-  { id: "backlog", label: "Backlog", color: "text-[var(--text-muted)]", dot: "bg-slate-400" },
-  { id: "todo", label: "À faire", color: "text-brand-500", dot: "bg-brand-500" },
-  { id: "in_progress", label: "En cours", color: "text-warn-500", dot: "bg-warn-500" },
-  { id: "review", label: "Revue", color: "text-sky-600", dot: "bg-sky-500" },
-  { id: "done", label: "Terminé", color: "text-accent-500", dot: "bg-accent-500" },
+  { id: "backlog", label: "Backlog", color: "text-[var(--text-muted)]", dot: "bg-[var(--text-muted)]" },
+  { id: "todo", label: "À faire", color: "text-sky-600", dot: "bg-sky-500" },
+  { id: "in_progress", label: "En cours", color: "text-amber-600", dot: "bg-amber-500" },
+  { id: "review", label: "Revue", color: "text-orange-600", dot: "bg-orange-500" },
+  { id: "done", label: "Terminé", color: "text-brand-600", dot: "bg-brand-400" },
   { id: "blocked", label: "Bloqué", color: "text-danger-500", dot: "bg-danger-500" },
 ] as const;
 
@@ -109,29 +111,29 @@ const TICKET_TYPES = [
 const PRIORITIES = ["low", "medium", "high", "critical"];
 
 const TOPIC_COLOR_STYLES: Record<string, string> = {
-  indigo: "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800",
-  blue: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800",
-  emerald: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800",
-  amber: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
+  indigo: "bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-900/20 dark:text-brand-200 dark:border-brand-800",
+  blue: "bg-brand-100 text-brand-800 border-brand-200 dark:bg-brand-900/25 dark:text-brand-100 dark:border-brand-800",
+  emerald: "bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-900/20 dark:text-brand-200 dark:border-brand-800",
+  amber: "bg-brand-100 text-brand-800 border-brand-200 dark:bg-brand-900/25 dark:text-brand-100 dark:border-brand-800",
   rose: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800",
-  violet: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800",
-  cyan: "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/40 dark:text-cyan-300 dark:border-cyan-800",
-  orange: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800",
-  lime: "bg-lime-50 text-lime-700 border-lime-200 dark:bg-lime-950/40 dark:text-lime-300 dark:border-lime-800",
-  slate: "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
+  violet: "bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-900/20 dark:text-brand-200 dark:border-brand-800",
+  cyan: "bg-brand-100 text-brand-800 border-brand-200 dark:bg-brand-900/25 dark:text-brand-100 dark:border-brand-800",
+  orange: "bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-900/20 dark:text-brand-200 dark:border-brand-800",
+  lime: "bg-brand-100 text-brand-800 border-brand-200 dark:bg-brand-900/25 dark:text-brand-100 dark:border-brand-800",
+  slate: "bg-[var(--bg-panel-2)] text-[var(--text-strong)] border-[var(--border)]",
 };
 
 const TOPIC_COLOR_DOT: Record<string, string> = {
-  indigo: "bg-indigo-500",
-  blue: "bg-blue-500",
-  emerald: "bg-emerald-500",
-  amber: "bg-amber-500",
+  indigo: "bg-brand-500",
+  blue: "bg-brand-400",
+  emerald: "bg-brand-500",
+  amber: "bg-brand-400",
   rose: "bg-rose-500",
-  violet: "bg-violet-500",
-  cyan: "bg-cyan-500",
-  orange: "bg-orange-500",
-  lime: "bg-lime-500",
-  slate: "bg-slate-500",
+  violet: "bg-brand-500",
+  cyan: "bg-brand-400",
+  orange: "bg-brand-500",
+  lime: "bg-brand-400",
+  slate: "bg-[var(--text-muted)]",
 };
 
 const TOPIC_COLOR_OPTIONS = Object.keys(TOPIC_COLOR_STYLES);
@@ -162,21 +164,48 @@ function priorityBadge(priority: string) {
 }
 
 function topicStatusBadge(status: string) {
-  if (status === "active") return "bg-accent-500/15 text-accent-500";
+  if (status === "active") return "bg-brand-500/15 text-brand-700";
   if (status === "blocked") return "bg-danger-500/15 text-danger-500";
-  if (status === "done") return "bg-slate-500/15 text-slate-500";
+  if (status === "done") return "bg-brand-100 text-brand-800";
   return "bg-[var(--bg-panel-2)] text-[var(--text-muted)]";
 }
 
 function buildDefaultPatternForm(): TicketPatternForm {
   return {
-    object_under_test: "", behavior_observed: "", expected_behavior: "", reproduction_steps: "",
-    environment: "", severity: "", impact: "", business_need: "", objective: "", business_rules: "",
-    scope: "", out_of_scope: "", risks: "", open_points: "", operational_goal: "", task_to_do: "",
-    prerequisites: "", expected_result: "", definition_of_done: "", subject_to_analyze: "",
-    problem: "", hypotheses: "", known_elements: "", unknowns: "", points_to_investigate: "",
-    stakeholders: "", expected_decision: "", expected_deliverable: "", test_scope: "", scenarios: "",
-    expected_results: "", test_data: "", test_status: "", raised_issues: "",
+    object_under_test: "",
+    behavior_observed: "",
+    expected_behavior: "",
+    reproduction_steps: "",
+    environment: "",
+    severity: "",
+    impact: "",
+    business_need: "",
+    objective: "",
+    business_rules: "",
+    scope: "",
+    out_of_scope: "",
+    risks: "",
+    open_points: "",
+    operational_goal: "",
+    task_to_do: "",
+    prerequisites: "",
+    expected_result: "",
+    definition_of_done: "",
+    subject_to_analyze: "",
+    problem: "",
+    hypotheses: "",
+    known_elements: "",
+    unknowns: "",
+    points_to_investigate: "",
+    stakeholders: "",
+    expected_decision: "",
+    expected_deliverable: "",
+    test_scope: "",
+    scenarios: "",
+    expected_results: "",
+    test_data: "",
+    test_status: "",
+    raised_issues: "",
   };
 }
 
@@ -184,12 +213,27 @@ function readPatternForm(details: Record<string, unknown> | undefined): TicketPa
   const defaults = buildDefaultPatternForm();
   if (!details) return defaults;
   return Object.fromEntries(
-    Object.keys(defaults).map((key) => [key, typeof details[key] === "string" ? String(details[key]) : ""])
+    Object.keys(defaults).map((key) => [key, typeof details[key] === "string" ? String(details[key]) : ""]),
   ) as TicketPatternForm;
 }
 
 function textAreaValueToList(value: string) {
   return value.split("\n").map((item) => item.trim()).filter(Boolean);
+}
+
+function formatBacklogDate(value: string | null) {
+  if (!value) return "Aucune date";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Date inconnue";
+  return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
+}
+
+function ticketPriorityRank(priority: string) {
+  if (priority === "critical") return 4;
+  if (priority === "high") return 3;
+  if (priority === "medium") return 2;
+  if (priority === "low") return 1;
+  return 0;
 }
 
 // ─── Shared input/select styles ───────────────────────────────────────────────
@@ -243,7 +287,7 @@ function TopicModal({ spaceId, topic, onClose }: { spaceId: string; topic?: Topi
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-[var(--overlay)] p-4 backdrop-blur-sm">
       <div className="flex min-h-full items-start justify-center py-6">
         <div className="max-h-[calc(100vh-3rem)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--bg-panel)] shadow-2xl">
           <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-panel)] px-6 py-4">
@@ -356,31 +400,46 @@ function TicketPatternFields({ type, form, setForm }: { type: string; form: Tick
       </div>
     );
   }
-  if (type === "bug") return <div className="grid gap-4 md:grid-cols-2">{ta("object_under_test","Contexte / module")}{ta("environment","Environnement")}{ta("behavior_observed","Comportement observé")}{ta("expected_behavior","Comportement attendu")}{ta("reproduction_steps","Étapes de reproduction")}{ta("severity","Sévérité")}{ta("impact","Impact")}</div>;
-  if (type === "feature") return <div className="grid gap-4 md:grid-cols-2">{ta("business_need","Besoin métier")}{ta("objective","Objectif")}{ta("business_rules","Règles métier")}{ta("scope","Périmètre")}{ta("out_of_scope","Hors périmètre")}{ta("risks","Risques")}{ta("open_points","Points ouverts")}</div>;
-  if (type === "analysis") return <div className="grid gap-4 md:grid-cols-2">{ta("subject_to_analyze","Sujet à analyser")}{ta("problem","Problème / question")}{ta("hypotheses","Hypothèses")}{ta("known_elements","Éléments connus")}{ta("unknowns","Zones floues")}{ta("points_to_investigate","Points à investiguer")}{ta("stakeholders","Parties prenantes")}{ta("expected_decision","Décision attendue")}{ta("expected_deliverable","Livrable attendu")}</div>;
-  if (type === "test") return <div className="grid gap-4 md:grid-cols-2">{ta("object_under_test","Objet testé")}{ta("test_scope","Périmètre de test")}{ta("prerequisites","Prérequis")}{ta("scenarios","Scénarios")}{ta("expected_results","Résultats attendus")}{ta("test_data","Données de test")}{ta("test_status","Statut recette")}{ta("raised_issues","Anomalies remontées")}</div>;
-  return <div className="grid gap-4 md:grid-cols-2">{ta("operational_goal","Objectif opérationnel")}{ta("task_to_do","Tâche à réaliser")}{ta("prerequisites","Prérequis")}{ta("expected_result","Résultat attendu")}{ta("definition_of_done","Définition de fini")}</div>;
+  if (type === "bug") return <div className="space-y-4">{ta("object_under_test","Contexte / module")}{ta("environment","Environnement")}{ta("behavior_observed","Comportement observé")}{ta("expected_behavior","Comportement attendu")}{ta("reproduction_steps","Étapes de reproduction")}{ta("severity","Sévérité")}{ta("impact","Impact")}</div>;
+  if (type === "feature") return <div className="space-y-4">{ta("business_need","Besoin métier")}{ta("objective","Objectif")}{ta("business_rules","Règles métier")}{ta("scope","Périmètre")}{ta("out_of_scope","Hors périmètre")}{ta("risks","Risques")}{ta("open_points","Points ouverts")}</div>;
+  if (type === "analysis") return <div className="space-y-4">{ta("subject_to_analyze","Sujet à analyser")}{ta("problem","Problème / question")}{ta("hypotheses","Hypothèses")}{ta("known_elements","Éléments connus")}{ta("unknowns","Zones floues")}{ta("points_to_investigate","Points à investiguer")}{ta("stakeholders","Parties prenantes")}{ta("expected_decision","Décision attendue")}{ta("expected_deliverable","Livrable attendu")}</div>;
+  if (type === "test") return <div className="space-y-4">{ta("object_under_test","Objet testé")}{ta("test_scope","Périmètre de test")}{ta("prerequisites","Prérequis")}{ta("scenarios","Scénarios")}{ta("expected_results","Résultats attendus")}{ta("test_data","Données de test")}{ta("test_status","Statut recette")}{ta("raised_issues","Anomalies remontées")}</div>;
+  return <div className="space-y-4">{ta("operational_goal","Objectif opérationnel")}{ta("task_to_do","Tâche à réaliser")}{ta("prerequisites","Prérequis")}{ta("expected_result","Résultat attendu")}{ta("definition_of_done","Définition de fini")}</div>;
 }
 
 // ─── Ticket Modal ─────────────────────────────────────────────────────────────
 
-function TicketModal({ topics, documents, ticket, defaultTopicId, onClose }: { topics: Topic[]; documents: Document[]; ticket?: Ticket; defaultTopicId?: string; onClose: () => void }) {
+function TicketModal({
+  topics,
+  documents,
+  ticket,
+  defaultTopicId,
+  defaultStatus,
+  onClose,
+}: {
+  topics: Topic[];
+  documents: Document[];
+  ticket?: Ticket;
+  defaultTopicId?: string;
+  defaultStatus?: string;
+  onClose: () => void;
+}) {
   const { mutateAsync: createTicket, isPending: creating } = useCreateTicket();
   const { mutateAsync: updateTicket, isPending: updating } = useUpdateTicket();
   const [topicId, setTopicId] = useState(ticket?.topic_id ?? defaultTopicId ?? topics[0]?.id ?? "");
   const [type, setType] = useState(ticket?.type ?? "feature");
   const [title, setTitle] = useState(ticket?.title ?? "");
-  const [description, setDescription] = useState(ticket?.description ?? "");
-  const [status, setStatus] = useState(ticket?.status ?? "backlog");
+  // Rich-text fields stored as Tiptap HTML
+  const [descriptionHtml, setDescriptionHtml] = useState(() => textToTiptapHtml(ticket?.description ?? ""));
+  const [criteriaHtml, setCriteriaHtml] = useState(() => linesToTiptapHtml(ticket?.acceptance_criteria ?? []));
+  const [dependenciesHtml, setDependenciesHtml] = useState(() => linesToTiptapHtml(ticket?.dependencies ?? []));
+  const [status, setStatus] = useState(ticket?.status ?? defaultStatus ?? "backlog");
   const [priority, setPriority] = useState(ticket?.priority ?? "medium");
   const [assignee, setAssignee] = useState(ticket?.assignee ?? "");
   const [reporter, setReporter] = useState(ticket?.reporter ?? "");
   const [tags, setTags] = useState((ticket?.tags ?? []).join(", "));
-  const [acceptanceCriteria, setAcceptanceCriteria] = useState((ticket?.acceptance_criteria ?? []).join("\n"));
   const [dueDate, setDueDate] = useState(ticket?.due_date ?? "");
   const [estimate, setEstimate] = useState(ticket?.estimate?.toString() ?? "");
-  const [dependencies, setDependencies] = useState((ticket?.dependencies ?? []).join("\n"));
   const [linkedDocumentIds, setLinkedDocumentIds] = useState<string[]>(ticket?.linked_document_ids ?? []);
   const [patternForm, setPatternForm] = useState(readPatternForm(ticket?.ticket_details));
   const [errorMessage, setErrorMessage] = useState("");
@@ -392,15 +451,15 @@ function TicketModal({ topics, documents, ticket, defaultTopicId, onClose }: { t
     const payload = {
       topic_id: topicId, type,
       title: title.trim(),
-      description: description.trim() || null,
+      description: tiptapHtmlToText(descriptionHtml) || null,
       status, priority,
       assignee: assignee.trim() || null,
       reporter: reporter.trim() || null,
       tags: tags.split(",").map((item) => item.trim()).filter(Boolean),
-      acceptance_criteria: textAreaValueToList(acceptanceCriteria),
+      acceptance_criteria: tiptapHtmlToLines(criteriaHtml),
       due_date: dueDate || null,
       estimate: estimate ? Number(estimate) : null,
-      dependencies: textAreaValueToList(dependencies),
+      dependencies: tiptapHtmlToLines(dependenciesHtml),
       linked_document_ids: linkedDocumentIds,
       ticket_details: patternForm,
     };
@@ -414,42 +473,71 @@ function TicketModal({ topics, documents, ticket, defaultTopicId, onClose }: { t
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4 backdrop-blur-sm">
       <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--bg-panel)] shadow-2xl">
+        {/* ── Header ── */}
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-panel)] px-6 py-4">
           <h2 className="text-base font-semibold text-[var(--text-strong)]">{ticket ? "Modifier le ticket" : "Créer un ticket"}</h2>
           <button type="button" onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-[var(--text-muted)] transition hover:bg-[var(--bg-panel-2)]">Fermer</button>
         </div>
+
         <form onSubmit={submit} className="p-6">
-          <div className="grid gap-6 xl:grid-cols-[1fr_300px]">
-            <div className="space-y-4">
+          <div className="grid grid-cols-[1fr_300px] gap-6 items-start">
+
+            {/* ── Left: main fields ── */}
+            <div className="space-y-5">
               <div>
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Titre *</label>
                 <input value={title} onChange={(e) => setTitle(e.target.value)} className={fieldCls} />
               </div>
+
               <div>
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Description</label>
-                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} className={cn(fieldCls, "resize-none")} />
+                <MiniTiptap
+                  content={descriptionHtml}
+                  onChange={setDescriptionHtml}
+                  placeholder="Décrivez le ticket…"
+                  minHeight="120px"
+                />
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Critères d'acceptation</label>
-                  <textarea value={acceptanceCriteria} onChange={(e) => setAcceptanceCriteria(e.target.value)} rows={5} placeholder="Un critère par ligne" className={cn(fieldCls, "resize-none")} />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Dépendances</label>
-                  <textarea value={dependencies} onChange={(e) => setDependencies(e.target.value)} rows={5} placeholder="Une dépendance par ligne" className={cn(fieldCls, "resize-none")} />
-                </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Critères d'acceptation</label>
+                <MiniTiptap
+                  content={criteriaHtml}
+                  onChange={setCriteriaHtml}
+                  placeholder="Un critère par item de liste…"
+                  minHeight="100px"
+                />
               </div>
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] p-4">
-                <p className="text-sm font-semibold text-[var(--text-strong)]">Pattern du ticket</p>
-                <p className="mt-0.5 text-xs text-[var(--text-muted)]">Le formulaire spécialisé s'adapte au type de ticket.</p>
-                <div className="mt-4"><TicketPatternFields type={type} form={patternForm} setForm={setPatternForm} /></div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Dépendances</label>
+                <MiniTiptap
+                  content={dependenciesHtml}
+                  onChange={setDependenciesHtml}
+                  placeholder="Une dépendance par item de liste…"
+                  minHeight="80px"
+                />
+              </div>
+
+              {errorMessage && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={onClose} className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-2 text-sm font-medium text-[var(--text-strong)] transition hover:bg-[var(--bg-panel)]">Annuler</button>
+                <button type="submit" disabled={isPending || !title.trim() || !topicId} className="btn-primary disabled:opacity-60">
+                  {isPending ? "Enregistrement..." : ticket ? "Enregistrer" : "Créer le ticket"}
+                </button>
               </div>
             </div>
-            <aside className="space-y-4">
+
+            {/* ── Right sidebar ── */}
+            <div className="space-y-4">
+              {/* Configuration */}
               <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] p-4 space-y-4">
-                <p className="text-sm font-semibold text-[var(--text-strong)]">Configuration</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Configuration</p>
                 <div><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Type</label><select value={type} onChange={(e) => setType(e.target.value)} className={fieldCls}>{TICKET_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></div>
                 <div><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Topic *</label><select value={topicId} onChange={(e) => setTopicId(e.target.value)} className={fieldCls}>{topics.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}</select></div>
                 <div><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Statut</label><select value={status} onChange={(e) => setStatus(e.target.value)} className={fieldCls}>{KANBAN_COLS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div>
@@ -460,27 +548,29 @@ function TicketModal({ topics, documents, ticket, defaultTopicId, onClose }: { t
                 <div><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Estimation (j)</label><input type="number" step="0.5" value={estimate} onChange={(e) => setEstimate(e.target.value)} className={fieldCls} /></div>
                 <div><label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Tags</label><input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="tag1, tag2" className={fieldCls} /></div>
               </div>
+
+              {/* Pattern du ticket */}
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Pattern du ticket</p>
+                <p className="mt-0.5 mb-3 text-xs text-[var(--text-muted)]">Champs adaptés au type sélectionné.</p>
+                <TicketPatternFields type={type} form={patternForm} setForm={setPatternForm} />
+              </div>
+
+              {/* Documentation liée */}
               {documents.length > 0 && (
                 <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] p-4">
-                  <p className="mb-3 text-sm font-semibold text-[var(--text-strong)]">Documentation liée</p>
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Documentation liée</p>
                   <div className="space-y-2">
                     {documents.map((doc) => (
-                      <label key={doc.id} className="flex items-start gap-2 text-sm text-[var(--text-strong)]">
-                        <input type="checkbox" checked={linkedDocumentIds.includes(doc.id)} onChange={(e) => setLinkedDocumentIds((s) => e.target.checked ? [...s, doc.id] : s.filter((item) => item !== doc.id))} className="mt-1 h-4 w-4 rounded border-[var(--border)]" />
-                        <span className="text-xs">{doc.title}</span>
+                      <label key={doc.id} className="flex items-start gap-2">
+                        <input type="checkbox" checked={linkedDocumentIds.includes(doc.id)} onChange={(e) => setLinkedDocumentIds((s) => e.target.checked ? [...s, doc.id] : s.filter((item) => item !== doc.id))} className="mt-0.5 h-4 w-4 rounded border-[var(--border)]" />
+                        <span className="text-xs text-[var(--text-strong)]">{doc.title}</span>
                       </label>
                     ))}
                   </div>
                 </div>
               )}
-            </aside>
-          </div>
-          {errorMessage ? <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</div> : null}
-          <div className="mt-6 flex justify-end gap-3">
-            <button type="button" onClick={onClose} className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-2 text-sm font-medium text-[var(--text-strong)] transition hover:bg-[var(--bg-panel)]">Annuler</button>
-            <button type="submit" disabled={isPending || !title.trim() || !topicId} className="btn-primary disabled:opacity-60">
-              {isPending ? "Enregistrement..." : ticket ? "Enregistrer" : "Créer le ticket"}
-            </button>
+            </div>
           </div>
         </form>
       </div>
@@ -491,9 +581,9 @@ function TicketModal({ topics, documents, ticket, defaultTopicId, onClose }: { t
 // ─── Sub-tab: Vue d'ensemble ──────────────────────────────────────────────────
 
 function OverviewSubTab({
-  projectId, spaceId, topics, tickets, onNavigate,
+  projectId, projectName, spaceId, spaceName, topics, tickets, onNavigate,
 }: {
-  projectId: string; spaceId: string; topics: Topic[]; tickets: Ticket[];
+  projectId: string; projectName: string; spaceId: string; spaceName: string; topics: Topic[]; tickets: Ticket[];
   onNavigate: (tab: SuiviSubTabId) => void;
 }) {
   const topicMap = useMemo(() => Object.fromEntries(topics.map((t) => [t.id, t])), [topics]);
@@ -506,8 +596,6 @@ function OverviewSubTab({
     return counts;
   }, [tickets]);
 
-  const blockedTickets = useMemo(() => tickets.filter((t) => t.status === "blocked"), [tickets]);
-
   const recentTickets = useMemo(() => [...tickets].sort((a, b) => {
     const da = a.updated_at ? new Date(a.updated_at).getTime() : 0;
     const db = b.updated_at ? new Date(b.updated_at).getTime() : 0;
@@ -517,7 +605,7 @@ function OverviewSubTab({
   const kpis = [
     { label: "Total tickets", value: tickets.length, icon: Table2, color: "text-brand-500", bg: "bg-brand-500/10" },
     { label: "En cours", value: statsByStatus.in_progress, icon: FolderKanban, color: "text-warn-500", bg: "bg-warn-500/10" },
-    { label: "Terminés", value: statsByStatus.done, icon: CheckCircle2, color: "text-accent-500", bg: "bg-accent-500/10" },
+    { label: "Terminés", value: statsByStatus.done, icon: CheckCircle2, color: "text-brand-700", bg: "bg-brand-100" },
     { label: "Bloqués", value: statsByStatus.blocked, icon: AlertTriangle, color: "text-danger-500", bg: "bg-danger-500/10" },
   ];
 
@@ -538,8 +626,7 @@ function OverviewSubTab({
         ))}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
-        <div className="space-y-6">
+      <div className="space-y-6">
           {/* Topics summary */}
           <div>
             <div className="mb-3 flex items-center justify-between">
@@ -564,7 +651,7 @@ function OverviewSubTab({
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2.5">
                           <span className={cn("h-2.5 w-2.5 flex-shrink-0 rounded-full", topicColorDot(topic.color))} />
-                          <Link to={`/projects/${projectId}/spaces/${spaceId}/topics/${topic.id}`} className="text-sm font-semibold text-[var(--text-strong)] transition hover:text-brand-500">{topic.title}</Link>
+                          <Link to={topicPath({ id: projectId, name: projectName }, { id: spaceId, name: spaceName }, topic)} className="text-sm font-semibold text-[var(--text-strong)] transition hover:text-brand-500">{topic.title}</Link>
                         </div>
                         <span className={cn("badge text-[10px]", topicStatusBadge(topic.status))}>{topic.status}</span>
                       </div>
@@ -589,14 +676,107 @@ function OverviewSubTab({
             )}
           </div>
 
-          {/* Recent tickets */}
           {recentTickets.length > 0 && (
             <div>
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-4 flex items-end justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-semibold tracking-tight text-[var(--text-strong)]">Activite recente</h2>
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">
+                    Les derniers tickets visibles dans l'espace, avec leur topic, leur statut et leur priorite.
+                  </p>
+                </div>
+                <button
+                  onClick={() => onNavigate("backlog")}
+                  className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-brand-500 transition duration-200 ease-in-out hover:bg-brand-50 hover:text-brand-600"
+                >
+                  Voir tout
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className="overflow-hidden rounded-[20px] border border-[var(--border)] bg-[var(--bg-panel)] shadow-[var(--shadow-sm)]">
+                <div className="hidden grid-cols-[140px_240px_minmax(0,1fr)_120px_100px] gap-4 border-b border-[var(--border)] bg-[var(--bg-panel-2)] px-6 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)] lg:grid">
+                  <span>Reference</span>
+                  <span>Topic</span>
+                  <span>Sujet</span>
+                  <span>Statut</span>
+                  <span>Priorite</span>
+                </div>
+                <div className="divide-y divide-[var(--border)]">
+                  {recentTickets.map((ticket) => {
+                    const topic = topicMap[ticket.topic_id];
+                    const statusMeta = KANBAN_COLS.find((c) => c.id === ticket.status);
+                    return (
+                      <button
+                        key={ticket.id}
+                        type="button"
+                        onClick={() => onNavigate("backlog")}
+                        className="grid w-full gap-3 px-5 py-4 text-left transition duration-200 ease-in-out hover:bg-[var(--bg-panel-2)] lg:grid-cols-[140px_240px_minmax(0,1fr)_120px_100px] lg:items-center lg:gap-4 lg:px-6"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-full bg-[var(--bg-panel-2)] px-3 py-1.5 font-mono text-[11px] font-semibold tracking-[0.08em] text-[var(--text-muted)]">
+                            {ticket.id}
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          {topic ? (
+                            <span
+                              className={cn(
+                                "inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold",
+                                topicColorClass(topic.color),
+                              )}
+                            >
+                              <span className={cn("h-1.5 w-1.5 flex-shrink-0 rounded-full", topicColorDot(topic.color))} />
+                              <span className="truncate">{topic.title}</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex rounded-full border border-[var(--border)] bg-[var(--bg-panel-2)] px-3 py-1.5 text-[11px] font-medium text-[var(--text-muted)]">
+                              Sans topic
+                            </span>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-[var(--text-strong)] lg:text-[15px]">
+                            {ticket.title}
+                          </p>
+                        </div>
+                        <div>
+                          <span
+                            className={cn(
+                              "inline-flex rounded-full px-3 py-1.5 text-[11px] font-semibold",
+                              statusMeta ? `${statusMeta.color} bg-[var(--bg-panel-2)]` : "bg-[var(--bg-panel-2)] text-[var(--text-muted)]",
+                            )}
+                          >
+                            {statusMeta?.label ?? ticket.status}
+                          </span>
+                        </div>
+                        <div>
+                          <span className={cn("inline-flex rounded-full px-3 py-1.5 text-[11px] font-semibold capitalize", priorityBadge(ticket.priority))}>
+                            {ticket.priority}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Recent tickets */}
+          {false && recentTickets.length > 0 && (
+            <div>
+              <div className="mb-4 flex items-end justify-between gap-4 [&>h2]:hidden [&>button]:hidden">
+                <div className="hidden">
+                  <h2 className="text-sm font-semibold text-[var(--text-strong)]">ActivitÃ© rÃ©cente</h2>
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold tracking-tight text-[var(--text-strong)]">Activité récente</h2>
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">Les derniers tickets actifs, avec leur topic, leur statut et leur priorité.</p>
+                </div>
                 <h2 className="text-sm font-semibold text-[var(--text-strong)]">Activité récente</h2>
                 <button onClick={() => onNavigate("backlog")} className="text-xs text-brand-500 transition hover:underline">Voir tout →</button>
               </div>
-              <div className="card overflow-hidden">
+              <div className="overflow-hidden rounded-[20px] border border-[var(--border)] bg-[var(--bg-panel)] shadow-[var(--shadow-sm)]">
                 <table className="w-full text-sm">
                   <tbody>
                     {recentTickets.map((ticket) => {
@@ -627,69 +807,13 @@ function OverviewSubTab({
           )}
         </div>
 
-        {/* Right sidebar */}
-        <div className="space-y-4">
-          {/* Status distribution */}
-          <div className="card p-4">
-            <h3 className="mb-3 text-sm font-semibold text-[var(--text-strong)]">Répartition par statut</h3>
-            <div className="space-y-2">
-              {KANBAN_COLS.map((col) => {
-                const count = statsByStatus[col.id] ?? 0;
-                const pct = tickets.length > 0 ? Math.round((count / tickets.length) * 100) : 0;
-                return (
-                  <div key={col.id} className="flex items-center gap-3">
-                    <span className={cn("w-16 text-xs font-medium", col.color)}>{col.label}</span>
-                    <div className="flex-1 rounded-full bg-[var(--bg-panel-2)] h-1.5">
-                      <div className={cn("h-1.5 rounded-full", col.dot)} style={{ width: `${pct}%` }} />
-                    </div>
-                    <span className="w-6 text-right text-xs text-[var(--text-muted)]">{count}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Blocked tickets */}
-          {blockedTickets.length > 0 && (
-            <div className="card border-danger-500/30 p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-danger-500" />
-                <h3 className="text-sm font-semibold text-danger-500">Tickets bloqués ({blockedTickets.length})</h3>
-              </div>
-              <div className="space-y-2">
-                {blockedTickets.map((ticket) => {
-                  const topic = topicMap[ticket.topic_id];
-                  return (
-                    <div key={ticket.id} className="rounded-lg border border-danger-500/20 bg-danger-500/5 px-3 py-2">
-                      <p className="text-xs font-medium text-[var(--text-strong)]">{ticket.title}</p>
-                      {topic && <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">{topic.title}</p>}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Quick actions */}
-          <div className="card p-4">
-            <h3 className="mb-3 text-sm font-semibold text-[var(--text-strong)]">Accès rapide</h3>
-            <div className="space-y-1">
-              {SUIVI_SUBTABS.filter((t) => t.id !== "overview").map((tab) => (
-                <button key={tab.id} onClick={() => onNavigate(tab.id)} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[var(--text-muted)] transition hover:bg-[var(--bg-panel-2)] hover:text-[var(--text-strong)]">
-                  <tab.icon className="h-4 w-4" />{tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
       </div>
-    </div>
   );
 }
 
 // ─── Sub-tab: Topics ──────────────────────────────────────────────────────────
 
-function TopicsSubTab({ spaceId, projectId, topics, tickets }: { spaceId: string; projectId: string; topics: Topic[]; tickets: Ticket[] }) {
+function TopicsSubTab({ spaceId, spaceName, projectId, projectName, topics, tickets }: { spaceId: string; spaceName: string; projectId: string; projectName: string; topics: Topic[]; tickets: Ticket[] }) {
   const [showTopicModal, setShowTopicModal] = useState(false);
   const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
 
@@ -727,42 +851,107 @@ function TopicsSubTab({ spaceId, projectId, topics, tickets }: { spaceId: string
           {topics.map((topic) => {
             const count = ticketCountByTopic[topic.id] ?? 0;
             return (
-              <div key={topic.id} className="card flex flex-col gap-3 p-5">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span className={cn("h-3 w-3 flex-shrink-0 rounded-full", topicColorDot(topic.color))} />
-                    <Link to={`/projects/${projectId}/spaces/${spaceId}/topics/${topic.id}`} className="truncate text-sm font-semibold text-[var(--text-strong)] transition hover:text-brand-500">
-                      {topic.title}
+              <div
+                key={topic.id}
+                className="group relative h-full overflow-hidden rounded-[20px] border border-[var(--border)] bg-[var(--bg-panel)] p-5 shadow-[var(--shadow-sm)] transition duration-200 ease-in-out hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)]"
+              >
+                <div className="pointer-events-none absolute left-5 right-5 top-0 h-16 rounded-b-[16px] bg-[radial-gradient(circle_at_top_left,rgba(209,245,105,0.10),transparent_56%),radial-gradient(circle_at_top_right,rgba(57,63,56,0.05),transparent_50%)]" />
+
+                <div className="relative flex h-full flex-col gap-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-3">
+                        <span className={cn("h-3.5 w-3.5 flex-shrink-0 rounded-full shadow-[0_0_0_5px_var(--bg-panel)]", topicColorDot(topic.color))} />
+                        <Link
+                          to={topicPath({ id: projectId, name: projectName }, { id: spaceId, name: spaceName }, topic)}
+                          className="truncate text-lg font-semibold tracking-tight text-[var(--text-strong)] transition group-hover:text-brand-600"
+                        >
+                          {topic.title}
+                        </Link>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className={cn("rounded-full border px-3 py-1 text-[11px] font-semibold", topicColorClass(topic.color))}>
+                          {topicNatureLabel(topic.topic_nature)}
+                        </span>
+                        <span className={cn("rounded-full px-3 py-1 text-[11px] font-semibold capitalize", topicStatusBadge(topic.status))}>
+                          {topic.status}
+                        </span>
+                        <span className={cn("rounded-full px-3 py-1 text-[11px] font-semibold capitalize", priorityBadge(topic.priority))}>
+                          {topic.priority}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setEditingTopic(topic); setShowTopicModal(true); }}
+                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] text-[var(--text-muted)] transition duration-200 ease-in-out hover:border-brand-300 hover:bg-brand-50 hover:text-brand-600"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3">
+                    <p className="line-clamp-3 min-h-[3.75rem] text-sm leading-6 text-[var(--text-muted)]">
+                      {topic.description?.trim() || "Aucune description pour le moment. Ajoutez un cadrage clair pour guider les tickets, la documentation et les arbitrages du topic."}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="rounded-[14px] bg-[var(--bg-panel-2)] px-4 py-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">Tickets</p>
+                      <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-[var(--text-strong)]">
+                        <Table2 className="h-4 w-4 text-brand-500" />
+                        <span>{count}</span>
+                      </div>
+                    </div>
+                    <div className="rounded-[14px] bg-[var(--bg-panel-2)] px-4 py-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">Risques</p>
+                      <div className={cn("mt-2 flex items-center gap-2 text-sm font-semibold", topic.risks.length > 0 ? "text-amber-600" : "text-[var(--text-strong)]")}>
+                        <AlertTriangle className="h-4 w-4" />
+                        <span>{topic.risks.length}</span>
+                      </div>
+                    </div>
+                    <div className="rounded-[14px] bg-[var(--bg-panel-2)] px-4 py-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">Questions</p>
+                      <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-[var(--text-strong)]">
+                        <MessageSquareText className="h-4 w-4 text-brand-500" />
+                        <span>{topic.open_questions.length}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="min-h-[34px] flex flex-wrap items-center gap-2">
+                    {topic.tags.length > 0 ? (
+                      <>
+                        {topic.tags.slice(0, 4).map((tag) => (
+                          <span key={tag} className="rounded-full border border-[var(--border)] bg-[var(--bg-panel-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-muted)]">
+                            #{tag}
+                          </span>
+                        ))}
+                        {topic.tags.length > 4 && (
+                          <span className="rounded-full border border-[var(--border)] bg-[var(--bg-panel-2)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-muted)]">
+                            +{topic.tags.length - 4}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-[11px] font-medium text-[var(--text-muted)]">Aucun tag pour le moment</span>
+                    )}
+                  </div>
+
+                  <div className="mt-auto flex items-center justify-between gap-3 border-t border-[var(--border)] pt-4">
+                    <p className="max-w-[65%] text-xs leading-5 text-[var(--text-muted)]">
+                      {count > 0 ? "Topic deja alimente en tickets et suivi actif." : "Pret a accueillir les premiers tickets de cadrage."}
+                    </p>
+                    <Link
+                      to={topicPath({ id: projectId, name: projectName }, { id: spaceId, name: spaceName }, topic)}
+                      className="inline-flex items-center gap-1 rounded-full bg-[var(--text-strong)] px-4 py-2 text-xs font-semibold text-[#D1F569] transition duration-200 ease-in-out hover:bg-brand-500 hover:text-[var(--text-strong)]"
+                    >
+                      Ouvrir
+                      <ChevronRight className="h-3.5 w-3.5" />
                     </Link>
                   </div>
-                  <button type="button" onClick={() => { setEditingTopic(topic); setShowTopicModal(true); }}
-                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-muted)] transition hover:bg-[var(--bg-panel-2)] hover:text-brand-500">
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
                 </div>
-
-                <div className="flex flex-wrap gap-1.5">
-                  <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold", topicColorClass(topic.color))}>{topicNatureLabel(topic.topic_nature)}</span>
-                  <span className={cn("badge text-[10px]", topicStatusBadge(topic.status))}>{topic.status}</span>
-                  <span className={cn("badge text-[10px]", priorityBadge(topic.priority))}>{topic.priority}</span>
-                </div>
-
-                {topic.description && <p className="line-clamp-2 text-xs text-[var(--text-muted)]">{topic.description}</p>}
-
-                <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border)] pt-3 text-xs text-[var(--text-muted)]">
-                  <span className="flex items-center gap-1"><Table2 className="h-3.5 w-3.5" />{count} ticket{count !== 1 ? "s" : ""}</span>
-                  {topic.risks.length > 0 && <span className="flex items-center gap-1 text-danger-500"><AlertTriangle className="h-3.5 w-3.5" />{topic.risks.length} risque{topic.risks.length > 1 ? "s" : ""}</span>}
-                  {topic.open_questions.length > 0 && <span>{topic.open_questions.length} question{topic.open_questions.length > 1 ? "s" : ""}</span>}
-                </div>
-
-                {topic.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {topic.tags.slice(0, 4).map((tag) => (
-                      <span key={tag} className="rounded-full bg-[var(--bg-panel-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-muted)]">#{tag}</span>
-                    ))}
-                    {topic.tags.length > 4 && <span className="rounded-full bg-[var(--bg-panel-2)] px-2 py-0.5 text-[10px] text-[var(--text-muted)]">+{topic.tags.length - 4}</span>}
-                  </div>
-                )}
               </div>
             );
           })}
@@ -774,7 +963,7 @@ function TopicsSubTab({ spaceId, projectId, topics, tickets }: { spaceId: string
 
 // ─── Sub-tab: Kanban ──────────────────────────────────────────────────────────
 
-function KanbanSubTab({ spaceId, topics, tickets, documents, loadingTickets }: { spaceId: string; topics: Topic[]; tickets: Ticket[]; documents: Document[]; loadingTickets: boolean }) {
+function LegacyKanbanSubTab({ spaceId, topics, tickets, documents, loadingTickets }: { spaceId: string; topics: Topic[]; tickets: Ticket[]; documents: Document[]; loadingTickets: boolean }) {
   const { mutateAsync: updateTicket } = useUpdateTicket();
   const [topicFilter, setTopicFilter] = useState("all");
   const [showTicketModal, setShowTicketModal] = useState(false);
@@ -786,7 +975,7 @@ function KanbanSubTab({ spaceId, topics, tickets, documents, loadingTickets }: {
 
   return (
     <div>
-      {showTicketModal && <TicketModal topics={topics} documents={documents} ticket={editingTicket ?? undefined} defaultTopicId={topicFilter !== "all" ? topicFilter : topics[0]?.id} onClose={() => { setShowTicketModal(false); setEditingTicket(null); }} />}
+      {showTicketModal && <SharedTicketModal topics={topics} documents={documents} ticket={editingTicket ?? undefined} defaultTopicId={topicFilter !== "all" ? topicFilter : topics[0]?.id} onClose={() => { setShowTicketModal(false); setEditingTicket(null); }} />}
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -803,7 +992,20 @@ function KanbanSubTab({ spaceId, topics, tickets, documents, loadingTickets }: {
       </div>
 
       {loadingTickets ? (
-        <div className="flex items-center gap-2 py-8 text-sm text-[var(--text-muted)]"><Loader2 className="h-4 w-4 animate-spin" />Chargement...</div>
+        <div className="flex gap-3 overflow-x-auto pb-4">
+          {KANBAN_COLS.map((col) => (
+            <div key={col.id} className="w-72 min-w-[280px] flex-shrink-0">
+              <div className="mb-2.5 flex items-center gap-2 px-1">
+                <span className={cn("h-2 w-2 rounded-full", col.dot)} />
+                <span className={cn("text-xs font-semibold uppercase tracking-wider", col.color)}>{col.label}</span>
+              </div>
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] p-2 space-y-2">
+                <RowSkeleton lines={2} />
+                <RowSkeleton lines={1} />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-4">
           {KANBAN_COLS.map((col) => {
@@ -875,118 +1077,453 @@ function KanbanSubTab({ spaceId, topics, tickets, documents, loadingTickets }: {
 
 // ─── Sub-tab: Backlog ─────────────────────────────────────────────────────────
 
-function BacklogSubTab({ topics, tickets, documents, loadingTickets }: { topics: Topic[]; tickets: Ticket[]; documents: Document[]; loadingTickets: boolean }) {
+function KanbanSubTab({
+  topics,
+  tickets,
+  documents,
+  loadingTickets,
+  ticketsError,
+  onRetryTickets,
+}: {
+  topics: Topic[];
+  tickets: Ticket[];
+  documents: Document[];
+  loadingTickets: boolean;
+  ticketsError?: string | null;
+  onRetryTickets?: () => void;
+}) {
   const { mutateAsync: updateTicket } = useUpdateTicket();
-  const [topicFilter, setTopicFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
+  const [createDefaults, setCreateDefaults] = useState<{ topicId?: string; status?: string }>({});
+
+  return (
+    <div>
+      {showTicketModal && (
+        <SharedTicketModal
+          topics={topics}
+          documents={documents}
+          ticket={editingTicket ?? undefined}
+          defaultTopicId={createDefaults.topicId ?? topics[0]?.id}
+          defaultStatus={createDefaults.status}
+          onClose={() => {
+            setShowTicketModal(false);
+            setEditingTicket(null);
+            setCreateDefaults({});
+          }}
+        />
+      )}
+
+      <KanbanPage
+        topics={topics}
+        tickets={tickets}
+        loading={loadingTickets}
+        error={ticketsError}
+        onRetry={onRetryTickets}
+        onCreateTicket={topics.length > 0 ? (statusId?: string) => {
+          setEditingTicket(null);
+          setCreateDefaults({ topicId: topics[0]?.id, status: statusId });
+          setShowTicketModal(true);
+        } : undefined}
+        onOpenTicket={(ticket) => {
+          setEditingTicket(ticket);
+          setCreateDefaults({});
+          setShowTicketModal(true);
+        }}
+        onStatusChange={(ticket, nextStatus) => {
+          void updateTicket({ id: ticket.id, status: nextStatus });
+        }}
+      />
+    </div>
+  );
+}
+
+function BacklogSubTab({
+  topics,
+  tickets,
+  documents,
+  loadingTickets,
+  mode = "backlog",
+}: {
+  topics: Topic[];
+  tickets: Ticket[];
+  documents: Document[];
+  loadingTickets: boolean;
+  mode?: "backlog" | "tasks";
+}) {
+  const { mutateAsync: updateTicket } = useUpdateTicket();
+  const isTasksView = mode === "tasks";
+  const [query, setQuery] = useState("");
+  const [topicFilter, setTopicFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [sortBy, setSortBy] = useState<"updated_desc" | "priority_desc" | "title_asc">(
+    isTasksView ? "priority_desc" : "updated_desc",
+  );
+  const [showTicketModal, setShowTicketModal] = useState(false);
+  const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
+  const deferredQuery = useDeferredValue(query.trim().toLocaleLowerCase("fr"));
 
   const topicMap = useMemo(() => Object.fromEntries(topics.map((t) => [t.id, t])), [topics]);
 
   const filteredTickets = useMemo(() => {
-    return tickets.filter((t) => {
-      if (topicFilter !== "all" && t.topic_id !== topicFilter) return false;
-      if (typeFilter !== "all" && t.type !== typeFilter) return false;
-      if (statusFilter !== "all" && t.status !== statusFilter) return false;
-      return true;
-    });
-  }, [tickets, topicFilter, typeFilter, statusFilter]);
+    return [...tickets]
+      .filter((ticket) => {
+        const topic = topicMap[ticket.topic_id];
+        if (topicFilter !== "all" && ticket.topic_id !== topicFilter) return false;
+        if (typeFilter !== "all" && ticket.type !== typeFilter) return false;
+        if (statusFilter !== "all" && ticket.status !== statusFilter) return false;
+        if (!deferredQuery) return true;
+
+        const haystack = [
+          ticket.id,
+          ticket.title,
+          ticket.type,
+          ticket.priority,
+          ticket.assignee ?? "",
+          topic?.title ?? "",
+          ...ticket.tags,
+        ]
+          .join(" ")
+          .toLocaleLowerCase("fr");
+
+        return haystack.includes(deferredQuery);
+      })
+      .sort((left, right) => {
+        if (sortBy === "title_asc") {
+          return left.title.localeCompare(right.title, "fr", { sensitivity: "base" });
+        }
+
+        if (sortBy === "priority_desc") {
+          const priorityDelta = ticketPriorityRank(right.priority) - ticketPriorityRank(left.priority);
+          if (priorityDelta !== 0) return priorityDelta;
+        }
+
+        const leftDate = new Date(left.updated_at ?? left.created_at ?? 0).getTime();
+        const rightDate = new Date(right.updated_at ?? right.created_at ?? 0).getTime();
+        return rightDate - leftDate;
+      });
+  }, [deferredQuery, sortBy, statusFilter, tickets, topicFilter, topicMap, typeFilter]);
+
+  const blockedCount = filteredTickets.filter((ticket) => ticket.status === "blocked").length;
+  const assignedCount = filteredTickets.filter((ticket) => Boolean(ticket.assignee)).length;
+  const dueSoonCount = filteredTickets.filter((ticket) => {
+    if (!ticket.due_date) return false;
+    const due = new Date(ticket.due_date).getTime();
+    if (Number.isNaN(due)) return false;
+    const delta = due - Date.now();
+    return delta >= 0 && delta <= 7 * 24 * 60 * 60 * 1000;
+  }).length;
+  const totalTagCount = filteredTickets.reduce((count, ticket) => count + ticket.tags.length, 0);
+  const defaultSort = isTasksView ? "priority_desc" : "updated_desc";
+  const hasActiveFilters = Boolean(
+    query.trim() || topicFilter !== "all" || statusFilter !== "all" || typeFilter !== "all" || sortBy !== defaultSort,
+  );
+
+  function clearFilters() {
+    setQuery("");
+    setTopicFilter("all");
+    setStatusFilter("all");
+    setTypeFilter("all");
+    setSortBy(defaultSort);
+  }
 
   return (
-    <div>
-      {showTicketModal && <TicketModal topics={topics} documents={documents} ticket={editingTicket ?? undefined} defaultTopicId={topicFilter !== "all" ? topicFilter : topics[0]?.id} onClose={() => { setShowTicketModal(false); setEditingTicket(null); }} />}
+    <div className="space-y-4">
+      {showTicketModal && <SharedTicketModal topics={topics} documents={documents} ticket={editingTicket ?? undefined} defaultTopicId={topicFilter !== "all" ? topicFilter : topics[0]?.id} onClose={() => { setShowTicketModal(false); setEditingTicket(null); }} />}
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <select value={topicFilter} onChange={(e) => setTopicFilter(e.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-1.5 text-xs text-[var(--text-strong)] outline-none transition focus:border-brand-500">
-            <option value="all">Tous les topics</option>
-            {topics.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
-          </select>
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-1.5 text-xs text-[var(--text-strong)] outline-none transition focus:border-brand-500">
-            <option value="all">Tous les types</option>
-            {TICKET_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </select>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-1.5 text-xs text-[var(--text-strong)] outline-none transition focus:border-brand-500">
-            <option value="all">Tous les statuts</option>
-            {KANBAN_COLS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-          </select>
-          <span className="text-xs text-[var(--text-muted)]">{filteredTickets.length} résultat{filteredTickets.length !== 1 ? "s" : ""}</span>
+      <section className="workspace-card p-4 sm:p-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <p className="section-title">{isTasksView ? "Tasks" : "Backlog"}</p>
+            <h3 className="mt-2 font-[var(--font-display)] text-[clamp(1.55rem,2vw,2.1rem)] font-extrabold tracking-tight text-[var(--text-strong)]">
+              {isTasksView ? "Executer, suivre, relancer sans friction" : "Prioriser vite, sans surcharge visuelle"}
+            </h3>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--text-muted)]">
+              {isTasksView
+                ? "La vue Tasks met l execution au premier plan: statut, assignee, echeance et priorite restent visibles en permanence pour accelerer le suivi quotidien."
+                : "La liste met le titre, le statut, la priorite et l assignee au premier plan. Les details secondaires restent accessibles sans alourdir la lecture."}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
+              <span className="rounded-full border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-1.5 font-medium">
+                {filteredTickets.length} visible{filteredTickets.length !== 1 ? "s" : ""}
+              </span>
+              <span className="rounded-full border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-1.5 font-medium">
+                {blockedCount} bloque{blockedCount !== 1 ? "s" : ""}
+              </span>
+              <span className="rounded-full border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-1.5 font-medium">
+                {assignedCount} assigne{assignedCount !== 1 ? "s" : ""}
+              </span>
+              {isTasksView ? (
+                <span className="rounded-full border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-1.5 font-medium">
+                  {dueSoonCount} echeance{dueSoonCount !== 1 ? "s" : ""} proche{dueSoonCount !== 1 ? "s" : ""}
+                </span>
+              ) : null}
+              <span className="rounded-full border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-1.5 font-medium">
+                {totalTagCount} tag{totalTagCount !== 1 ? "s" : ""} charge{totalTagCount !== 1 ? "s" : ""}
+              </span>
+            </div>
+          </div>
+
+          <button onClick={() => { setEditingTicket(null); setShowTicketModal(true); }} disabled={topics.length === 0} className="btn-primary shrink-0 disabled:opacity-60">
+            <Plus className="h-4 w-4" />
+            {isTasksView ? "Nouvelle task" : "Nouveau ticket"}
+          </button>
         </div>
-        <button onClick={() => { setEditingTicket(null); setShowTicketModal(true); }} disabled={topics.length === 0} className="btn-primary disabled:opacity-60">
-          <Plus className="h-4 w-4" />Nouveau ticket
-        </button>
-      </div>
+
+        <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,0.9fr)]">
+          <label className="flex items-center gap-3 rounded-[22px] border border-[var(--border)] bg-[var(--bg-panel)] px-4 py-3 shadow-[var(--shadow-xs)]">
+            <Search className="h-4 w-4 text-[var(--text-muted)]" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={isTasksView ? "Rechercher une task par titre, ID, assignee ou topic" : "Rechercher par titre, ID, assignee, tag ou topic"}
+              className="min-w-0 flex-1 border-0 bg-transparent text-sm text-[var(--text-strong)] outline-none placeholder:text-[var(--text-xmuted)]"
+            />
+          </label>
+
+          <select value={topicFilter} onChange={(event) => setTopicFilter(event.target.value)} className={fieldCls}>
+            <option value="all">Tous les topics</option>
+            {topics.map((topic) => <option key={topic.id} value={topic.id}>{topic.title}</option>)}
+          </select>
+
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className={fieldCls}>
+            <option value="all">Tous les statuts</option>
+            {KANBAN_COLS.map((column) => <option key={column.id} value={column.id}>{column.label}</option>)}
+          </select>
+
+          <select value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)} className={fieldCls}>
+            <option value="updated_desc">Dernieres mises a jour</option>
+            <option value="priority_desc">Priorite la plus haute</option>
+            <option value="title_asc">Titre A-Z</option>
+          </select>
+        </div>
+
+        <details className="mt-3 rounded-2xl border border-[var(--border)] bg-[var(--bg-panel)] px-4 py-3">
+          <summary className="cursor-pointer list-none text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+            Plus de filtres
+          </summary>
+          <div className="mt-3 grid gap-3 md:max-w-sm">
+            <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className={fieldCls}>
+              <option value="all">Tous les types</option>
+              {TICKET_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+            </select>
+            {hasActiveFilters ? (
+              <button type="button" onClick={clearFilters} className="btn-secondary justify-center">
+                Reinitialiser les filtres
+              </button>
+            ) : null}
+          </div>
+        </details>
+      </section>
 
       {loadingTickets ? (
-        <div className="flex items-center gap-2 py-8 text-sm text-[var(--text-muted)]"><Loader2 className="h-4 w-4 animate-spin" />Chargement...</div>
+        <div className="workspace-card overflow-hidden">
+          {[1, 2, 3, 4, 5].map((i) => <RowSkeleton key={i} lines={2} />)}
+        </div>
+      ) : tickets.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <Table2 className="h-6 w-6" />
+          </div>
+          <div>
+            <p className="empty-state-title">Aucun ticket pour le moment</p>
+            <p className="empty-state-description">
+              {isTasksView
+                ? "Creez une premiere task pour suivre l execution quotidienne et distribuer les responsabilites."
+                : "Creez un premier ticket pour commencer a prioriser le travail et structurer le delivery."}
+            </p>
+          </div>
+        </div>
       ) : filteredTickets.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-[var(--border)] py-12 text-center">
-          <Table2 className="h-8 w-8 text-[var(--text-muted)]" />
-          <p className="text-sm text-[var(--text-muted)]">Aucun ticket ne correspond à ces filtres.</p>
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <Search className="h-6 w-6" />
+          </div>
+          <div>
+            <p className="empty-state-title">Aucun resultat pour ces filtres</p>
+            <p className="empty-state-description">
+              Elargissez la recherche ou rouvrez les filtres avances pour retrouver une vue plus large.
+            </p>
+          </div>
+          {hasActiveFilters ? (
+            <button type="button" className="btn-secondary" onClick={clearFilters}>
+              Reinitialiser les filtres
+            </button>
+          ) : null}
         </div>
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--border)] bg-[var(--bg-panel-2)]">
-                {["ID", "Topic", "Type", "Titre", "Statut", "Priorité", "Assigné", "Action"].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredTickets.map((ticket) => {
-                const topic = topicMap[ticket.topic_id];
-                return (
-                  <tr key={ticket.id} className="border-b border-[var(--border)] last:border-0 transition hover:bg-[var(--bg-panel-2)]">
-                    <td className="px-4 py-3 font-mono text-[10px] text-[var(--text-muted)]">{ticket.id}</td>
-                    <td className="px-4 py-3">
-                      {topic ? (
-                        <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold", topicColorClass(topic.color))}>
-                          <span className={cn("h-1.5 w-1.5 rounded-full", topicColorDot(topic.color))} />{topic.title}
-                        </span>
-                      ) : "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="badge bg-[var(--bg-panel-2)] text-[10px] text-[var(--text-muted)]">{ticketTypeLabel(ticket.type)}</span>
-                    </td>
-                    <td className="max-w-[240px] px-4 py-3">
-                      <p className="truncate text-xs font-medium text-[var(--text-strong)]">{ticket.title}</p>
-                      {ticket.assignee && <p className="text-[10px] text-[var(--text-muted)]">{ticket.assignee}</p>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <select
-                        value={ticket.status}
-                        onChange={(e) => updateTicket({ id: ticket.id, status: e.target.value })}
-                        className="rounded-lg border border-[var(--border)] bg-[var(--bg-panel-2)] px-2 py-1 text-[10px] text-[var(--text-strong)] outline-none transition focus:border-brand-500"
-                      >
-                        {KANBAN_COLS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={cn("badge text-[10px]", priorityBadge(ticket.priority))}>{ticket.priority}</span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-[var(--text-muted)]">{ticket.assignee ?? "—"}</td>
-                    <td className="px-4 py-3">
-                      <button type="button" onClick={() => { setEditingTicket(ticket); setShowTicketModal(true); }}
-                        className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-muted)] transition hover:border-brand-500/40 hover:text-brand-500">
-                        <Pencil className="h-3 w-3" />Modifier
-                      </button>
-                    </td>
+        <>
+          <div className="space-y-3 md:hidden">
+            {filteredTickets.map((ticket) => {
+              const topic = topicMap[ticket.topic_id];
+              const visibleTags = ticket.tags.slice(0, 2);
+              const hiddenTags = Math.max(0, ticket.tags.length - visibleTags.length);
+              return (
+                <article key={ticket.id} className="workspace-card p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-mono text-[11px] text-[var(--text-xmuted)]">{ticket.id}</p>
+                      <h4 title={ticket.title} className="mt-2 text-sm font-semibold leading-6 text-[var(--text-strong)]">
+                        {ticket.title}
+                      </h4>
+                    </div>
+                    <span className={cn("badge shrink-0 text-[10px]", priorityBadge(ticket.priority))}>{ticket.priority || "n/a"}</span>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className={cn("badge text-[10px]", topic ? topicColorClass(topic.color) : "badge-neutral")}>
+                      {topic?.title ?? "Sans topic"}
+                    </span>
+                    <span className="badge badge-neutral text-[10px]">{ticketTypeLabel(ticket.type)}</span>
+                    {visibleTags.map((tag) => (
+                      <span key={tag} className="badge badge-neutral text-[10px]">
+                        {tag}
+                      </span>
+                    ))}
+                    {hiddenTags > 0 ? <span className="badge badge-neutral text-[10px]">+{hiddenTags}</span> : null}
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <p className="text-[var(--text-xmuted)]">Statut</p>
+                      <p className="mt-1 font-medium text-[var(--text-strong)]">
+                        {KANBAN_COLS.find((column) => column.id === ticket.status)?.label ?? ticket.status}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[var(--text-xmuted)]">Assigne</p>
+                      <p className="mt-1 font-medium text-[var(--text-strong)]">{ticket.assignee ?? "Non assigne"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[var(--text-xmuted)]">{isTasksView ? "Echeance" : "Mis a jour"}</p>
+                      <p className="mt-1 font-medium text-[var(--text-strong)]">{formatBacklogDate(isTasksView ? ticket.due_date ?? ticket.updated_at ?? ticket.created_at : ticket.updated_at ?? ticket.created_at)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[var(--text-xmuted)]">Topic</p>
+                      <p className="mt-1 truncate font-medium text-[var(--text-strong)]">{topic?.title ?? "Non lie"}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-col gap-2">
+                    <select
+                      value={ticket.status}
+                      onChange={(event) => { void updateTicket({ id: ticket.id, status: event.target.value }); }}
+                      className={fieldCls}
+                    >
+                      {KANBAN_COLS.map((column) => <option key={column.id} value={column.id}>{column.label}</option>)}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => { setEditingTicket(ticket); setShowTicketModal(true); }}
+                      className="btn-secondary justify-center"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Modifier
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          <div className="hidden md:block workspace-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-[920px] w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border)] bg-[var(--bg-panel-2)]/85">
+                    {[
+                      isTasksView ? "Task" : "Ticket",
+                      "Statut",
+                      "Priorite",
+                      "Assigne",
+                      isTasksView ? "Echeance" : "Mis a jour",
+                      "Actions",
+                    ].map((header) => (
+                      <th key={header} className="px-5 py-4 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                        {header}
+                      </th>
+                    ))}
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {filteredTickets.map((ticket) => {
+                    const topic = topicMap[ticket.topic_id];
+                    const visibleTags = ticket.tags.slice(0, 2);
+                    const hiddenTags = Math.max(0, ticket.tags.length - visibleTags.length);
+                    return (
+                      <tr key={ticket.id} className="border-b border-[var(--border-subtle)] align-top last:border-0 hover:bg-[var(--bg-panel-2)]/45">
+                        <td className="px-5 py-4">
+                          <div className="max-w-[30rem]">
+                            <p className="truncate font-mono text-[10px] text-[var(--text-xmuted)]" title={ticket.id}>{ticket.id}</p>
+                            <button
+                              type="button"
+                              onClick={() => { setEditingTicket(ticket); setShowTicketModal(true); }}
+                              title={ticket.title}
+                              className="mt-2 text-left text-sm font-semibold leading-6 text-[var(--text-strong)] transition hover:text-brand-700"
+                            >
+                              {ticket.title}
+                            </button>
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <span className={cn("badge text-[10px]", topic ? topicColorClass(topic.color) : "badge-neutral")}>
+                                {topic?.title ?? "Sans topic"}
+                              </span>
+                              <span className="badge badge-neutral text-[10px]">{ticketTypeLabel(ticket.type)}</span>
+                              {visibleTags.map((tag) => (
+                                <span key={tag} className="badge badge-neutral text-[10px]">
+                                  {tag}
+                                </span>
+                              ))}
+                              {hiddenTags > 0 ? <span className="badge badge-neutral text-[10px]">+{hiddenTags}</span> : null}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <select
+                            value={ticket.status}
+                            onChange={(event) => { void updateTicket({ id: ticket.id, status: event.target.value }); }}
+                            className="w-[10rem] rounded-xl border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-2 text-xs font-medium text-[var(--text-strong)] outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15"
+                          >
+                            {KANBAN_COLS.map((column) => <option key={column.id} value={column.id}>{column.label}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className={cn("badge text-[10px]", priorityBadge(ticket.priority))}>{ticket.priority || "n/a"}</span>
+                        </td>
+                        <td className="px-5 py-4 text-sm text-[var(--text-muted)]">
+                          {ticket.assignee ?? "Non assigne"}
+                        </td>
+                        <td className="px-5 py-4 text-sm text-[var(--text-muted)]">
+                          {formatBacklogDate(isTasksView ? ticket.due_date ?? ticket.updated_at ?? ticket.created_at : ticket.updated_at ?? ticket.created_at)}
+                        </td>
+                        <td className="px-5 py-4">
+                          <button
+                            type="button"
+                            onClick={() => { setEditingTicket(ticket); setShowTicketModal(true); }}
+                            className="btn-secondary h-9 rounded-xl px-3 text-xs"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Modifier
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
 }
 
 // ─── Sub-tab: Roadmap ─────────────────────────────────────────────────────────
+
+function TasksSubTab(props: { topics: Topic[]; tickets: Ticket[]; documents: Document[]; loadingTickets: boolean }) {
+  return <BacklogSubTab {...props} mode="tasks" />;
+}
 
 function RoadmapSubTab({ topics }: { topics: Topic[] }) {
   const topicsWithDates = useMemo(() =>
@@ -1121,37 +1658,35 @@ function RoadmapSubTab({ topics }: { topics: Topic[] }) {
 // ─── Suivi Tab (container with sub-tabs) ─────────────────────────────────────
 
 function SuiviTab({
-  projectId, spaceId, topics, tickets, documents, loadingTickets,
+  projectId, projectName, spaceId, spaceName, topics, tickets, documents, loadingTickets, ticketsError, onRetryTickets, subTab, onSetSubTab,
 }: {
-  projectId: string; spaceId: string; topics: Topic[]; tickets: Ticket[]; documents: Document[]; loadingTickets: boolean;
+  projectId: string; projectName: string; spaceId: string; spaceName: string; topics: Topic[]; tickets: Ticket[]; documents: Document[]; loadingTickets: boolean; ticketsError?: string | null; onRetryTickets?: () => void;
+  subTab: SuiviSubTabId; onSetSubTab: (tab: SuiviSubTabId) => void;
 }) {
-  const [subTab, setSubTab] = useState<SuiviSubTabId>("overview");
+  const doneCount = tickets.filter((ticket) => ticket.status === "done").length;
+  const explicitBacklogCount = tickets.filter((ticket) => ticket.status === "backlog").length;
+  const backlogCount = explicitBacklogCount > 0 ? explicitBacklogCount : Math.max(tickets.length - doneCount, 0);
 
   return (
     <div>
       {/* Sub-tab bar */}
-      <div className="mb-5 flex items-center gap-1 rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] p-1">
-        {SUIVI_SUBTABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setSubTab(tab.id)}
-            className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition",
-              subTab === tab.id
-                ? "bg-[var(--bg-panel)] text-[var(--text-strong)] shadow-sm"
-                : "text-[var(--text-muted)] hover:text-[var(--text-strong)]",
-            )}
-          >
-            <tab.icon className="h-3.5 w-3.5 flex-shrink-0" />
-            <span className="hidden sm:inline">{tab.label}</span>
-          </button>
-        ))}
+      <div className="mb-5">
+        <SpaceSuiviTabs
+          activeTab={subTab}
+          onChange={onSetSubTab}
+          counts={{
+            topics: topics.length,
+            tasks: tickets.length,
+            backlog: backlogCount,
+          }}
+        />
       </div>
 
       {/* Sub-tab content */}
-      {subTab === "overview" && <OverviewSubTab projectId={projectId} spaceId={spaceId} topics={topics} tickets={tickets} onNavigate={setSubTab} />}
-      {subTab === "topics" && <TopicsSubTab spaceId={spaceId} projectId={projectId} topics={topics} tickets={tickets} />}
-      {subTab === "kanban" && <KanbanSubTab spaceId={spaceId} topics={topics} tickets={tickets} documents={documents} loadingTickets={loadingTickets} />}
+      {subTab === "overview" && <OverviewSubTab projectId={projectId} projectName={projectName} spaceId={spaceId} spaceName={spaceName} topics={topics} tickets={tickets} onNavigate={onSetSubTab} />}
+      {subTab === "topics" && <TopicsSubTab spaceId={spaceId} spaceName={spaceName} projectId={projectId} projectName={projectName} topics={topics} tickets={tickets} />}
+      {subTab === "kanban" && <KanbanSubTab topics={topics} tickets={tickets} documents={documents} loadingTickets={loadingTickets} ticketsError={ticketsError} onRetryTickets={onRetryTickets} />}
+      {subTab === "tasks" && <TasksSubTab topics={topics} tickets={tickets} documents={documents} loadingTickets={loadingTickets} />}
       {subTab === "backlog" && <BacklogSubTab topics={topics} tickets={tickets} documents={documents} loadingTickets={loadingTickets} />}
       {subTab === "roadmap" && <RoadmapSubTab topics={topics} />}
     </div>
@@ -1165,62 +1700,252 @@ function SuiviTab({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function SpacePage() {
-  const { projectId, spaceId } = useParams<{ projectId: string; spaceId: string }>();
-  const [activeTab, setActiveTab] = useState<MainTabId>("suivi");
-  const { data: space } = useSpace(spaceId);
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { projectSlug, spaceSlug } = useParams<{ projectSlug: string; spaceSlug: string }>();
+  const { data: projects = [] } = useProjects();
+  const project = useMemo(() => resolveEntityBySlug(projects, projectSlug), [projects, projectSlug]);
+  const projectId = project?.id;
+  const { data: spaces = [] } = useSpaces(projectId);
+  const space = useMemo(() => resolveEntityBySlug(spaces, spaceSlug), [spaces, spaceSlug]);
+  const spaceId = space?.id;
   const { data: topics = [] } = useTopics(spaceId);
-  const { data: tickets = [], isLoading: loadingTickets } = useTickets({ spaceId });
+  const {
+    data: tickets = [],
+    isLoading: loadingTickets,
+    error: ticketsQueryError,
+    refetch: refetchTickets,
+  } = useTickets({ spaceId });
   const { data: documents = [] } = useDocuments({ spaceId });
   const spaceName = space?.name ?? "Espace";
+  const blockedTickets = tickets.filter((ticket) => ticket.status === "blocked").length;
+  const ticketsError = ticketsQueryError instanceof Error ? ticketsQueryError.message : ticketsQueryError ? "Impossible de charger les tickets." : null;
+  const projectRef = { id: projectId ?? "", name: project?.name ?? projectSlug ?? "" };
+  const spaceRef = { id: spaceId ?? "", name: space?.name ?? spaceSlug ?? "" };
+  const requestedSuiviView = searchParams.get("view");
+  const suiviSubTab: SuiviSubTabId = isSpaceSuiviView(requestedSuiviView) ? requestedSuiviView : "overview";
+
+  function setSuiviSubTab(tab: SuiviSubTabId) {
+    const nextSearchParams = new URLSearchParams(searchParams);
+    if (tab === "overview") nextSearchParams.delete("view");
+    else nextSearchParams.set("view", tab);
+    setSearchParams(nextSearchParams, { replace: true });
+  }
+
+  useEffect(() => {
+    if (!projectId || !spaceId) return;
+    if (!isLegacyEntitySlug(projectSlug) && !isLegacyEntitySlug(spaceSlug)) return;
+    navigate(spaceSuiviPath(projectRef, spaceRef, suiviSubTab), { replace: true });
+  }, [navigate, projectId, projectRef, projectSlug, spaceId, spaceRef, spaceSlug, suiviSubTab]);
+
+  useEffect(() => {
+    if (!requestedSuiviView || isSpaceSuiviView(requestedSuiviView)) return;
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete("view");
+    setSearchParams(nextSearchParams, { replace: true });
+  }, [requestedSuiviView, searchParams, setSearchParams]);
+
+  const doneCount = tickets.filter((t: Ticket) => t.status === "done").length;
+  const activeTopicsCount = topics.filter((topic) => topic.status === "active").length;
+  const explicitBacklogCount = tickets.filter((ticket) => ticket.status === "backlog").length;
+  const backlogCount = explicitBacklogCount > 0 ? explicitBacklogCount : Math.max(tickets.length - doneCount, 0);
+  const openTicketsCount = tickets.filter((ticket) => ticket.status !== "done").length;
 
   return (
-    <div className="mx-auto max-w-full space-y-4">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="section-title">Espace</p>
-          <h1 className="mt-0.5 text-xl font-bold text-[var(--text-strong)]">{spaceName}</h1>
-          {space?.description && <p className="mt-0.5 text-sm text-[var(--text-muted)]">{space.description}</p>}
+    <div className="space-y-8">
+      <section className="overflow-hidden rounded-[28px] border border-[var(--rule)] bg-[var(--paper)] shadow-[var(--shadow-sm)]">
+        <div className="flex flex-col gap-8 px-6 py-6 lg:px-8 lg:py-8">
+          <div className="flex flex-col gap-8 border-b border-[var(--rule)] pb-8 xl:flex-row xl:items-end xl:justify-between">
+            <div className="max-w-[820px]">
+              <div className="flex flex-wrap items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--ink-4)]">
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-[var(--accent)]" />
+                  Espace actif
+                </span>
+                <span className="hidden h-px w-10 bg-[var(--rule)] md:block" />
+                <span>{project?.name ?? "Portefeuille MePO"}</span>
+              </div>
+
+              <h1
+                className="mt-5 max-w-[10ch] text-[54px] leading-[0.92] tracking-[-0.05em] text-[var(--ink)] md:text-[76px]"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                {spaceName}
+              </h1>
+
+              <p className="mt-5 max-w-[58ch] text-[15px] leading-7 text-[var(--ink-3)] md:text-[16px]">
+                {space?.description?.trim() ||
+                  "Un cockpit recentre sur les arbitrages, les sujets en mouvement et les points a debloquer plutot que sur une accumulation de cartes generiques."}
+              </p>
+
+              <div className="mt-5 flex flex-wrap gap-2.5">
+                <span className="inline-flex items-center gap-2 rounded-full border border-[var(--rule)] bg-[var(--paper-2)] px-3 py-1.5 text-[12px] text-[var(--ink-3)]">
+                  <span className="h-2 w-2 rounded-full bg-[var(--accent)] shadow-[0_0_0_4px_rgba(255,90,31,0.14)]" />
+                  {activeTopicsCount} sujets actifs
+                </span>
+                <span className="inline-flex items-center rounded-full border border-[var(--rule)] bg-[var(--paper-2)] px-3 py-1.5 text-[12px] text-[var(--ink-3)]">
+                  {openTicketsCount} taches ouvertes
+                </span>
+                <span className="inline-flex items-center rounded-full border border-[var(--rule)] bg-[var(--paper-2)] px-3 py-1.5 text-[12px] text-[var(--ink-3)]">
+                  {documents.length} documents
+                </span>
+                {blockedTickets > 0 ? (
+                  <span className="inline-flex items-center rounded-full border border-[rgba(var(--brand-rgb),0.16)] bg-[var(--accent-soft)] px-3 py-1.5 text-[12px] text-[var(--accent-deep)]">
+                    {blockedTickets} blocages a arbitrer
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 xl:max-w-[340px] xl:justify-end">
+              <Link
+                to={spaceDocumentsPath(projectRef, spaceRef)}
+                className="btn-secondary h-11 rounded-[12px] px-4 text-[12.5px]"
+              >
+                <FileText className="h-4 w-4" />
+                Documents
+              </Link>
+              <Link
+                to={spaceChatPath(projectRef, spaceRef)}
+                className="btn-secondary h-11 rounded-[12px] px-4 text-[12.5px]"
+              >
+                <MessageSquareText className="h-4 w-4" />
+                Let's Chat
+              </Link>
+              <button
+                type="button"
+                onClick={() => setSuiviSubTab("topics")}
+                className="btn-primary h-11 rounded-[12px] px-4 text-[12.5px]"
+              >
+                <Layers className="h-4 w-4" />
+                Ouvrir les topics
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-px overflow-hidden rounded-[22px] border border-[var(--rule)] bg-[var(--rule)] xl:grid-cols-4">
+            <button
+              type="button"
+              onClick={() => setSuiviSubTab("topics")}
+              className="group flex min-h-[138px] flex-col justify-between bg-[var(--paper)] px-5 py-5 text-left transition hover:bg-[var(--paper-2)]"
+            >
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--ink-4)]">
+                Topics
+              </div>
+              <div>
+                <div
+                  className="text-[50px] leading-none text-[var(--ink)]"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  {String(topics.length).padStart(2, "0")}
+                </div>
+                <div className="mt-3 text-[13px] leading-5 text-[var(--ink-3)]">
+                  {activeTopicsCount} en mouvement dans cet espace
+                </div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSuiviSubTab("tasks")}
+              className="group flex min-h-[138px] flex-col justify-between bg-[var(--paper)] px-5 py-5 text-left transition hover:bg-[var(--paper-2)]"
+            >
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--ink-4)]">
+                Taches ouvertes
+              </div>
+              <div>
+                <div
+                  className="text-[50px] leading-none text-[var(--ink)]"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  {String(openTicketsCount).padStart(2, "0")}
+                </div>
+                <div className="mt-3 text-[13px] leading-5 text-[var(--ink-3)]">
+                  {doneCount} terminees sur {tickets.length}
+                </div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSuiviSubTab("backlog")}
+              className="group flex min-h-[138px] flex-col justify-between bg-[var(--paper)] px-5 py-5 text-left transition hover:bg-[var(--paper-2)]"
+            >
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--ink-4)]">
+                Backlog
+              </div>
+              <div>
+                <div
+                  className="text-[50px] leading-none text-[var(--accent-deep)]"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  {String(backlogCount).padStart(2, "0")}
+                </div>
+                <div className="mt-3 text-[13px] leading-5 text-[var(--ink-3)]">
+                  {blockedTickets > 0 ? `${blockedTickets} point${blockedTickets > 1 ? "s" : ""} a arbitrer` : "File priorisee prete a etre tiree"}
+                </div>
+              </div>
+            </button>
+
+            <Link
+              to={spaceDocumentsPath(projectRef, spaceRef)}
+              className="group flex min-h-[138px] flex-col justify-between bg-[var(--paper)] px-5 py-5 text-left transition hover:bg-[var(--paper-2)]"
+            >
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--ink-4)]">
+                Documents
+              </div>
+              <div>
+                <div
+                  className="text-[50px] leading-none text-[var(--ink)]"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  {String(documents.length).padStart(2, "0")}
+                </div>
+                <div className="mt-3 text-[13px] leading-5 text-[var(--ink-3)]">
+                  Specs, notes et contexte rattaches a l'espace
+                </div>
+              </div>
+            </Link>
+          </div>
         </div>
-        <button onClick={() => setActiveTab("chat")} className="btn-primary flex-shrink-0">
-          <Sparkles className="h-4 w-4" />Let's Chat
+      </section>
+
+      <div className="hidden">
+      {/* ── Page header ─────────────────────────────────────────── */}
+            {blockedTickets > 0 ? <span className="badge badge-danger">{blockedTickets} bloqués</span> : null}
+
+      {/* ── Compact metric strip (remplace les 4 KpiCards) ──────── */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <button type="button" onClick={() => setSuiviSubTab("topics")} className="text-left">
+          <StatCard label="Topics" value={topics.length} hint="unités de pilotage" tone="brand" icon={<Layers className="h-4 w-4" />} />
         </button>
+        <button type="button" onClick={() => setSuiviSubTab("backlog")} className="text-left">
+          <StatCard label="Backlog" value={tickets.length} hint={`${doneCount} terminés`} tone="warning" icon={<Table2 className="h-4 w-4" />} />
+        </button>
+        <button type="button" onClick={() => setSuiviSubTab("backlog")} className="text-left">
+          <StatCard label="Bloqués" value={blockedTickets} hint="tickets à traiter" tone={blockedTickets > 0 ? "danger" : "neutral"} icon={<AlertTriangle className="h-4 w-4" />} />
+        </button>
+        <Link to={spaceDocumentsPath(projectRef, spaceRef)} className="text-left">
+          <StatCard label="Documents" value={documents.length} hint="contexte disponible" tone="violet" icon={<FileText className="h-4 w-4" />} />
+        </Link>
       </div>
 
-      {/* Main tab bar */}
-      <div className="flex border-b border-[var(--border)]">
-        {MAIN_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={cn(
-              "flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition",
-              activeTab === tab.id
-                ? "border-brand-500 text-brand-500"
-                : "border-transparent text-[var(--text-muted)] hover:border-[var(--border)] hover:text-[var(--text-strong)]",
-            )}
-          >
-            <tab.icon className="h-4 w-4" />
-            {tab.label}
-          </button>
-        ))}
       </div>
 
-      {/* Tab content */}
-      <div>
-        {activeTab === "suivi" && <SuiviTab projectId={projectId!} spaceId={spaceId!} topics={topics} tickets={tickets} documents={documents} loadingTickets={loadingTickets} />}
-        {activeTab === "documents" && <DocumentsTab spaceId={spaceId!} topics={topics} />}
-        {activeTab === "chat" && (
-          <LetsChat
-            spaceId={spaceId!}
-            spaceName={spaceName}
-            projectId={projectId!}
-            topics={topics}
-            tickets={tickets}
-            documents={documents}
-          />
-        )}
-      </div>
+      <SuiviTab
+        projectId={projectId!}
+        projectName={project?.name ?? "Projet"}
+        spaceId={spaceId!}
+        spaceName={spaceName}
+        topics={topics}
+        tickets={tickets}
+        documents={documents}
+        loadingTickets={loadingTickets}
+        ticketsError={ticketsError}
+        onRetryTickets={() => { void refetchTickets(); }}
+        subTab={suiviSubTab}
+        onSetSubTab={setSuiviSubTab}
+      />
     </div>
   );
 }

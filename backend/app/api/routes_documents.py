@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.document import Document
 from app.schemas.document import DocumentCreate, DocumentRead, DocumentUpdate
+from app.services.ai.workspace_cache import invalidate_workspace_cache
 
 router = APIRouter()
 
@@ -44,6 +45,7 @@ def create_document(payload: DocumentCreate, db: Session = Depends(get_db)) -> D
     db.add(doc)
     db.commit()
     db.refresh(doc)
+    invalidate_workspace_cache(space_id=doc.space_id, topic_id=doc.topic_id)
     return doc
 
 
@@ -65,6 +67,7 @@ def update_document(document_id: str, payload: DocumentUpdate, db: Session = Dep
     doc.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(doc)
+    invalidate_workspace_cache(space_id=doc.space_id, topic_id=doc.topic_id)
     return doc
 
 
@@ -73,10 +76,13 @@ def delete_document(document_id: str, db: Session = Depends(get_db)) -> None:
     doc = db.query(Document).filter(Document.id == document_id).first()
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    space_id = doc.space_id
+    topic_id = doc.topic_id
     # cascade: delete children first
     _delete_children(document_id, db)
     db.delete(doc)
     db.commit()
+    invalidate_workspace_cache(space_id=space_id, topic_id=topic_id)
 
 
 def _delete_children(parent_id: str, db: Session) -> None:

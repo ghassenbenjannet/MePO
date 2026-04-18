@@ -1,120 +1,183 @@
-import { FolderOpen, Plus, Search } from "lucide-react";
-import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { NotificationCenter } from "../notifications/notification-center";
-import { useProjectSuggestions } from "../../hooks/use-projects";
+import {
+  ChevronRight,
+  Plus,
+  Search,
+  Share2,
+  SlidersHorizontal,
+} from "lucide-react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useProjects } from "../../hooks/use-projects";
+import { useSpaces } from "../../hooks/use-spaces";
+import { projectPath, resolveEntityBySlug, spaceOverviewPath, spaceSuiviPath } from "../../lib/routes";
 import { useAuthStore } from "../../stores/auth-store";
 import { useUiStore } from "../../stores/ui-store";
 import { cn } from "../../lib/utils";
+import { initials, avatarGradient } from "../../lib/format";
 
-function getInitials(name: string): string {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? "")
-    .join("");
+interface TopbarProps {
+  onOpenCommandPalette: () => void;
+  onToggleDesignTweaks: () => void;
 }
 
-export function Topbar() {
+export function Topbar({ onOpenCommandPalette, onToggleDesignTweaks }: TopbarProps) {
   const navigate = useNavigate();
+  const { projectSlug, spaceSlug } = useParams<{ projectSlug?: string; spaceSlug?: string }>();
   const user = useAuthStore((s) => s.user);
   const setCreateProjectModalOpen = useUiStore((s) => s.setCreateProjectModalOpen);
-  const [query, setQuery] = useState("");
-  const [focused, setFocused] = useState(false);
 
-  const { data: suggestions = [], isFetching } = useProjectSuggestions(query);
-  const visibleSuggestions = useMemo(() => suggestions.slice(0, 6), [suggestions]);
+  const { pathname, search } = useLocation();
+  const { data: projects = [] } = useProjects();
+  const project = resolveEntityBySlug(projects, projectSlug);
+  const projectId = project?.id;
+  const { data: spaces = [] } = useSpaces(projectId);
+  const space = resolveEntityBySlug(spaces, spaceSlug);
+  const currentSuiviView = new URLSearchParams(search).get("view") ?? "overview";
 
-  const initials = user?.full_name ? getInitials(user.full_name) : "?";
-  const showDropdown = focused && query.trim().length > 0;
+  const currentSpacePage = space
+    ? pathname.endsWith("/documents")
+      ? "Documents"
+      : pathname.endsWith("/chat")
+        ? "Let's Chat"
+        : pathname.endsWith("/suivi")
+          ? (
+            currentSuiviView === "kanban"
+              ? "Kanban"
+              : currentSuiviView === "tasks"
+                ? "Taches"
+                : currentSuiviView === "backlog"
+                  ? "Backlog"
+                  : currentSuiviView === "roadmap"
+                    ? "Roadmap"
+                    : currentSuiviView === "topics"
+                      ? "Topics"
+                      : "Cockpit"
+          )
+          : pathname.includes("/topics/")
+            ? "Topic"
+            : null
+    : null;
+
+  const userInitials = user?.full_name ? initials(user.full_name) : "?";
+  const userGradient = avatarGradient(user?.full_name ?? "MePO");
 
   return (
-    <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-4 border-b border-slate-100 bg-white/95 px-5 backdrop-blur supports-[backdrop-filter]:bg-white/80">
-
-      {/* Left: logo + search */}
-      <div className="flex min-w-0 flex-1 items-center gap-5">
+    <header className="sticky top-0 z-20 flex h-[57px] flex-shrink-0 items-center gap-3 border-b border-[var(--rule)] bg-[var(--paper)] px-6 xl:px-8">
+      <nav className="hidden min-w-0 items-center gap-2 text-[12.5px] text-[var(--ink-4)] xl:flex">
         <Link
           to="/"
-          className="flex-shrink-0 text-[15px] font-bold tracking-[-0.02em] text-ink transition hover:opacity-80"
+          className="font-semibold text-[var(--ink)] transition hover:opacity-80"
         >
-          Me<span className="text-brand-500">PO</span>
+          MePO
         </Link>
 
-        {/* Search */}
-        <div className="relative hidden max-w-[440px] flex-1 xl:block">
-          <div
-            className={cn(
-              "flex items-center gap-2 rounded-xl border bg-slate-50 px-3 py-2 transition-all",
-              focused
-                ? "border-brand-300 bg-white ring-4 ring-brand-100/60"
-                : "border-slate-200 hover:border-slate-300",
-            )}
-          >
-            <Search className="h-3.5 w-3.5 flex-shrink-0 text-muted" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setTimeout(() => setFocused(false), 150)}
-              placeholder="Rechercher un projet…"
-              className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-muted"
-            />
-            <kbd className="hidden rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-muted sm:block">
-              ⌘K
-            </kbd>
-          </div>
+        {project ? (
+          <>
+            <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[var(--ink-5)]" />
+            <Link
+              to={projectPath(project)}
+              className="max-w-[180px] truncate transition hover:text-[var(--ink)]"
+            >
+              {project.name}
+            </Link>
+          </>
+        ) : null}
 
-          {showDropdown && (
-            <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-float">
-              {isFetching ? (
-                <div className="px-4 py-3 text-sm text-muted">Recherche…</div>
-              ) : visibleSuggestions.length > 0 ? (
-                visibleSuggestions.map((project) => (
-                  <button
-                    key={project.id}
-                    onMouseDown={() => {
-                      setQuery("");
-                      navigate(`/projects/${project.id}`);
-                    }}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-slate-50"
-                  >
-                    <FolderOpen className="h-4 w-4 flex-shrink-0 text-muted" />
-                    <span className="flex-1 text-sm text-ink">{project.name}</span>
-                    <span className="text-[11px] text-muted">Projet</span>
-                  </button>
-                ))
-              ) : (
-                <div className="px-4 py-3 text-sm text-muted">Aucun projet trouvé</div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+        {space ? (
+          <>
+            <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[var(--ink-5)]" />
+            <Link
+              to={
+                pathname.endsWith("/suivi")
+                  ? spaceSuiviPath(
+                    project ?? { id: projectId ?? "", name: projectSlug ?? "" },
+                    space,
+                    currentSuiviView === "topics" || currentSuiviView === "kanban" || currentSuiviView === "tasks" || currentSuiviView === "backlog" || currentSuiviView === "roadmap"
+                      ? currentSuiviView
+                      : "overview",
+                  )
+                  : spaceOverviewPath(
+                    project ?? { id: projectId ?? "", name: projectSlug ?? "" },
+                    space,
+                  )
+              }
+              className={
+                currentSpacePage
+                  ? "max-w-[150px] truncate transition hover:text-[var(--ink)]"
+                  : "max-w-[160px] truncate font-semibold text-[var(--accent-deep)] transition hover:opacity-80"
+              }
+            >
+              {space.name}
+            </Link>
+          </>
+        ) : null}
 
-      {/* Right: actions */}
-      <div className="flex flex-shrink-0 items-center gap-2">
+        {currentSpacePage ? (
+          <>
+            <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-[var(--ink-5)]" />
+            <span className="max-w-[140px] truncate font-semibold text-[var(--ink)]">
+              {currentSpacePage}
+            </span>
+          </>
+        ) : null}
+      </nav>
+
+      <button
+        onClick={onOpenCommandPalette}
+        className={cn(
+          "hidden min-w-0 max-w-[560px] flex-1 items-center gap-2 rounded-full border border-[var(--rule)] px-3 py-2 text-[13px] transition lg:flex",
+          "bg-[var(--paper)] text-[var(--ink-4)]",
+          "hover:border-[var(--ink-5)] hover:text-[var(--ink)]",
+        )}
+        type="button"
+      >
+        <Search className="h-3.5 w-3.5 flex-shrink-0 text-[var(--ink-5)]" />
+        <span className="min-w-0 flex-1 truncate text-left">
+          Rechercher projets, espaces, tickets...
+        </span>
+        <kbd className="hidden rounded border border-[var(--rule)] bg-[var(--paper-2)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ink-5)] sm:block">
+          Ctrl K
+        </kbd>
+      </button>
+
+      <div className="ml-auto flex items-center gap-2">
+        <button
+          onClick={onToggleDesignTweaks}
+          title="Tweaks"
+          className="flex h-8 w-8 items-center justify-center rounded-[10px] border border-[var(--rule)] bg-transparent text-[var(--ink-4)] transition hover:bg-[var(--paper-2)] hover:text-[var(--ink)]"
+          type="button"
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+        </button>
+
+        <button
+          type="button"
+          className="hidden h-8 items-center gap-1.5 rounded-[10px] border border-[var(--rule)] bg-transparent px-3 text-[12px] font-medium text-[var(--ink)] transition hover:bg-[var(--paper-2)] md:inline-flex"
+        >
+          <Share2 className="h-3.5 w-3.5" />
+          Partager
+        </button>
+
         <button
           onClick={() => {
             navigate("/");
             setCreateProjectModalOpen(true);
           }}
-          className="hidden items-center gap-2 rounded-xl bg-brand-500 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-brand-600 sm:inline-flex"
+          className="btn-primary hidden h-8 items-center gap-1.5 rounded-[10px] px-3 text-[12.5px] sm:flex"
+          type="button"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-3.5 w-3.5" />
           Nouveau projet
         </button>
 
-        {/* Notification center */}
-        <NotificationCenter />
-
-        {/* User avatar */}
         <Link
           to="/profile"
           title={user?.full_name ?? "Profil"}
-          className="relative flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-xs font-bold text-white shadow-sm transition hover:scale-105 hover:shadow-md"
+          className={cn(
+            "flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-bold text-white transition hover:scale-[1.04]",
+            `bg-gradient-to-br ${userGradient}`,
+          )}
         >
-          {initials}
+          {userInitials}
         </Link>
       </div>
     </header>

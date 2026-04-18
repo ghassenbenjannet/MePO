@@ -19,6 +19,7 @@ interface AuthState {
   login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   logout: () => void;
   fetchMe: () => Promise<void>;
+  updateAiPreferences: (prefs: Record<string, unknown>) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -45,6 +46,14 @@ export const useAuthStore = create<AuthState>()(
       fetchMe: async () => {
         const user = await apiFetch<UserProfile>("/api/auth/me");
         set({ user });
+      },
+
+      updateAiPreferences: async (prefs: Record<string, unknown>) => {
+        const updated = await apiFetch<UserProfile>("/api/users/me", {
+          method: "PATCH",
+          body: JSON.stringify({ ai_preferences: prefs }),
+        });
+        set({ user: updated });
       },
     }),
     { name: "shadow-po-auth" },

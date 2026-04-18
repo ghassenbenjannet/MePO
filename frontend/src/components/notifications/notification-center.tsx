@@ -47,7 +47,7 @@ function NotifRow({ notif }: { notif: AppNotification }) {
     <div
       className={cn(
         "group relative flex items-start gap-3 px-4 py-3.5 transition-colors",
-        "hover:bg-slate-50",
+        "hover:bg-[var(--bg-panel-2)]",
         !notif.read && "bg-brand-50/30",
       )}
       onClick={() => !notif.read && markAsRead(notif.id)}
@@ -81,7 +81,7 @@ function NotifRow({ notif }: { notif: AppNotification }) {
           e.stopPropagation();
           clearNotification(notif.id);
         }}
-        className="flex-shrink-0 flex h-6 w-6 items-center justify-center rounded-lg text-muted opacity-0 transition hover:bg-slate-200 hover:text-ink group-hover:opacity-100"
+        className="flex-shrink-0 flex h-6 w-6 items-center justify-center rounded-lg text-[var(--text-muted)] opacity-0 transition hover:bg-[var(--bg-panel-3)] hover:text-[var(--text-strong)] group-hover:opacity-100"
         aria-label="Supprimer"
       >
         <X className="h-3.5 w-3.5" />
@@ -98,7 +98,7 @@ const TABS: { key: "all" | NotifCategory; label: string; Icon: React.ComponentTy
   { key: "ai", label: "IA", Icon: BrainCircuit },
 ];
 
-export function NotificationCenter() {
+export function NotificationCenter({ onClose }: { onClose?: () => void }) {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"all" | NotifCategory>("all");
   const ref = useRef<HTMLDivElement>(null);
@@ -129,7 +129,7 @@ export function NotificationCenter() {
           "relative flex h-9 w-9 items-center justify-center rounded-xl border transition",
           open
             ? "border-brand-200 bg-brand-50 text-brand-600"
-            : "border-slate-200 bg-white text-muted hover:border-slate-300 hover:bg-slate-50 hover:text-ink",
+            : "border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-muted)] hover:bg-[var(--bg-panel-2)] hover:text-[var(--text-strong)]",
         )}
         aria-label="Notifications"
       >
@@ -146,12 +146,12 @@ export function NotificationCenter() {
         <div
           className={cn(
             "absolute right-0 top-[calc(100%+10px)] z-50 w-[420px] max-w-[calc(100vw-2rem)]",
-            "overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-float",
+            "overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-panel)] shadow-float",
             "animate-dropdown",
           )}
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5">
+          <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3.5">
             <div className="flex items-center gap-2.5">
               <Bell className="h-4 w-4 text-muted" />
               <span className="text-sm font-semibold text-ink">Notifications</span>
@@ -182,7 +182,7 @@ export function NotificationCenter() {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 border-b border-slate-100 px-3 py-2">
+          <div className="flex gap-1 border-b border-[var(--border)] px-3 py-2">
             {TABS.map((tab) => {
               const count =
                 tab.key === "all"
@@ -196,7 +196,7 @@ export function NotificationCenter() {
                     "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition",
                     activeTab === tab.key
                       ? "bg-brand-50 text-brand-700"
-                      : "text-muted hover:bg-slate-50 hover:text-ink",
+                      : "text-[var(--text-muted)] hover:bg-[var(--bg-panel-2)] hover:text-[var(--text-strong)]",
                   )}
                 >
                   {tab.label}
@@ -206,7 +206,7 @@ export function NotificationCenter() {
                         "flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-bold",
                         activeTab === tab.key
                           ? "bg-brand-500 text-white"
-                          : "bg-slate-200 text-muted",
+                          : "bg-[var(--bg-panel-3)] text-[var(--text-muted)]",
                       )}
                     >
                       {count}
@@ -218,10 +218,10 @@ export function NotificationCenter() {
           </div>
 
           {/* List */}
-          <div className="max-h-[440px] overflow-y-auto divide-y divide-slate-50">
+          <div className="max-h-[440px] overflow-y-auto divide-y divide-[var(--border-subtle)]">
             {filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-3 py-14 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--bg-panel-3)]">
                   <Bell className="h-5 w-5 text-muted" />
                 </div>
                 <div>

@@ -10,25 +10,25 @@ const CONFIG = {
     icon: CheckCircle2,
     bar: "bg-emerald-500",
     icon_cls: "text-emerald-500",
-    bg: "bg-white border-emerald-100",
+    bg: "bg-[var(--bg-panel)] border-emerald-100",
   },
   error: {
     icon: AlertCircle,
     bar: "bg-red-500",
     icon_cls: "text-red-500",
-    bg: "bg-white border-red-100",
+    bg: "bg-[var(--bg-panel)] border-red-100",
   },
   warning: {
     icon: AlertTriangle,
     bar: "bg-amber-400",
     icon_cls: "text-amber-500",
-    bg: "bg-white border-amber-100",
+    bg: "bg-[var(--bg-panel)] border-amber-100",
   },
   info: {
     icon: Info,
     bar: "bg-brand-500",
     icon_cls: "text-brand-500",
-    bg: "bg-white border-brand-100",
+    bg: "bg-[var(--bg-panel)] border-brand-100",
   },
 } as const;
 

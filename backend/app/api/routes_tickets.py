@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.ticket import Ticket
 from app.schemas.ticket import TicketCreate, TicketRead, TicketUpdate
+from app.services.ai.workspace_cache import invalidate_workspace_cache
 
 router = APIRouter()
 
@@ -37,6 +38,7 @@ def create_ticket(payload: TicketCreate, db: Session = Depends(get_db)) -> Ticke
     db.add(ticket)
     db.commit()
     db.refresh(ticket)
+    invalidate_workspace_cache(topic_id=ticket.topic_id)
     return ticket
 
 
@@ -58,6 +60,7 @@ def update_ticket(ticket_id: str, payload: TicketUpdate, db: Session = Depends(g
     ticket.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(ticket)
+    invalidate_workspace_cache(topic_id=ticket.topic_id)
     return ticket
 
 
@@ -66,5 +69,7 @@ def delete_ticket(ticket_id: str, db: Session = Depends(get_db)) -> None:
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
+    topic_id = ticket.topic_id
     db.delete(ticket)
     db.commit()
+    invalidate_workspace_cache(topic_id=topic_id)

@@ -1,6 +1,14 @@
 from datetime import date, datetime
+from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+
+def _coerce_list(v: Any) -> list:
+    """Accept a list as-is; coerce anything else (e.g. empty string) to []."""
+    if isinstance(v, list):
+        return v
+    return []
 
 
 class TicketCreate(BaseModel):
@@ -60,3 +68,16 @@ class TicketRead(BaseModel):
     ticket_details: dict = {}
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    # ── Coerce legacy DB rows where JSON columns stored "" instead of [] ──────
+    @field_validator("tags", "acceptance_criteria", "dependencies", "linked_document_ids", mode="before")
+    @classmethod
+    def coerce_list_fields(cls, v: Any) -> list:
+        return _coerce_list(v)
+
+    @field_validator("ticket_details", mode="before")
+    @classmethod
+    def coerce_dict_field(cls, v: Any) -> dict:
+        if isinstance(v, dict):
+            return v
+        return {}

@@ -8,6 +8,34 @@ from app.schemas.user import UserRead
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+# ─── In-memory preference store (demo mode) ───────────────────────────────────
+# Persists within a server session. Replaced by real DB auth when implemented.
+
+_DEMO_USER_ID = "user-1"
+
+_DEFAULT_AI_PREFS: dict = {
+    "response_style": "balanced",
+    "detail_level": "normal",
+    "confidence_labels": True,
+    "show_suggestions": True,
+    "chat_open_by_default": False,
+}
+
+_user_prefs_store: dict[str, dict] = {}
+
+
+def get_demo_user_prefs() -> dict:
+    """Return current AI preferences for the demo user (defaults if never saved)."""
+    return dict(_user_prefs_store.get(_DEMO_USER_ID, _DEFAULT_AI_PREFS))
+
+
+def update_demo_user_prefs(prefs: dict) -> dict:
+    """Merge-update AI preferences for the demo user. Returns the updated dict."""
+    current = get_demo_user_prefs()
+    current.update(prefs)
+    _user_prefs_store[_DEMO_USER_ID] = current
+    return current
+
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
@@ -33,16 +61,12 @@ def create_access_token(subject: str, remember_me: bool = False) -> tuple[str, i
 
 def build_demo_user() -> UserRead:
     return UserRead(
-        id="user-1",
+        id=_DEMO_USER_ID,
         email="meryem.ghass@example.com",
         full_name="Meryem Ghass",
         preferred_language="fr",
         preferred_theme="light",
-        ai_preferences={
-            "response_style": "structured",
-            "verbosity": "compact",
-            "confidence_labels": True,
-        },
+        ai_preferences=get_demo_user_prefs(),
         favorite_project_ids=["hcl-livret"],
     )
 

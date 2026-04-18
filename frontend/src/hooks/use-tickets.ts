@@ -33,3 +33,11 @@ export function useUpdateTicket() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tickets"] }),
   });
 }
+
+export function useDeleteTicket() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/tickets/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tickets"] }),
+  });
+}

@@ -42,6 +42,12 @@ def run_compat_migrations() -> None:
                 connection.execute(text("ALTER TABLE projects ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'active'"))
             if "image_url" not in project_columns:
                 connection.execute(text("ALTER TABLE projects ADD COLUMN image_url TEXT"))
+            if "openai_strategy" not in project_columns:
+                connection.execute(text(
+                    "ALTER TABLE projects ADD COLUMN openai_strategy VARCHAR(80) NOT NULL DEFAULT 'responses_plus_conversation'"
+                ))
+            if "active_skill_version_id" not in project_columns:
+                connection.execute(text("ALTER TABLE projects ADD COLUMN active_skill_version_id VARCHAR(36)"))
 
         if "spaces" in inspector.get_table_names():
             space_columns = {column["name"] for column in inspector.get_columns("spaces")}
@@ -102,3 +108,97 @@ def run_compat_migrations() -> None:
                 connection.execute(text("ALTER TABLE documents ADD COLUMN icon VARCHAR(50)"))
             if "is_archived" not in doc_columns:
                 connection.execute(text("ALTER TABLE documents ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT FALSE"))
+
+        if "ai_conversations" in inspector.get_table_names():
+            conv_columns = {column["name"] for column in inspector.get_columns("ai_conversations")}
+            if "project_id" not in conv_columns:
+                connection.execute(text("ALTER TABLE ai_conversations ADD COLUMN project_id VARCHAR(36)"))
+            if "updated_at" not in conv_columns:
+                connection.execute(text("ALTER TABLE ai_conversations ADD COLUMN updated_at TIMESTAMP"))
+                connection.execute(text("UPDATE ai_conversations SET updated_at = created_at WHERE updated_at IS NULL"))
+            if "skill_version_id_snapshot" not in conv_columns:
+                connection.execute(text("ALTER TABLE ai_conversations ADD COLUMN skill_version_id_snapshot VARCHAR(36)"))
+            if "openai_conversation_id" not in conv_columns:
+                connection.execute(text("ALTER TABLE ai_conversations ADD COLUMN openai_conversation_id VARCHAR(255)"))
+            if "openai_response_id" not in conv_columns:
+                connection.execute(text("ALTER TABLE ai_conversations ADD COLUMN openai_response_id VARCHAR(255)"))
+            if "summary_memory" not in conv_columns:
+                connection.execute(text("ALTER TABLE ai_conversations ADD COLUMN summary_memory VARCHAR(4000)"))
+
+        # project_knowledge_documents is created by create_all() on first run.
+        # The block below handles environments where the table was created before
+        # later columns were added (schema evolution safety net).
+        if "project_knowledge_documents" in inspector.get_table_names():
+            pkd_columns = {column["name"] for column in inspector.get_columns("project_knowledge_documents")}
+            if "scope" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN scope VARCHAR(50) NOT NULL DEFAULT 'project'"))
+            else:
+                connection.execute(text("UPDATE project_knowledge_documents SET scope = 'project' WHERE scope IS NULL OR scope = ''"))
+            if "document_type" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN document_type VARCHAR(100) NOT NULL DEFAULT 'reference'"))
+            if "category" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN category VARCHAR(100) NOT NULL DEFAULT 'reference'"))
+            elif "document_type" in pkd_columns:
+                connection.execute(text("UPDATE project_knowledge_documents SET document_type = category WHERE document_type IS NULL OR document_type = ''"))
+            if "source_type" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN source_type VARCHAR(50) NOT NULL DEFAULT 'upload'"))
+            if "local_file_id" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN local_file_id VARCHAR(100)"))
+            if "mime_type" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN mime_type VARCHAR(150)"))
+            if "original_filename" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN original_filename VARCHAR(255)"))
+            if "content_extracted_text" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN content_extracted_text TEXT"))
+            if "linked_topic_ids" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN linked_topic_ids JSON NOT NULL DEFAULT '[]'"))
+            if "updated_at" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN updated_at TIMESTAMP"))
+                connection.execute(text("UPDATE project_knowledge_documents SET updated_at = created_at WHERE updated_at IS NULL"))
+            if "sync_status" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN sync_status VARCHAR(50) NOT NULL DEFAULT 'not_synced'"))
+            if "synced_at" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN synced_at TIMESTAMP"))
+            if "content_hash" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN content_hash VARCHAR(64)"))
+            if "sync_error" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN sync_error TEXT"))
+            if "openai_file_id" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN openai_file_id VARCHAR(100)"))
+            if "summary" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN summary TEXT"))
+            if "tags" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN tags JSON NOT NULL DEFAULT '[]'"))
+            if "is_active" not in pkd_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_documents ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE"))
+
+        if "project_knowledge_settings" in inspector.get_table_names():
+            pks_columns = {column["name"] for column in inspector.get_columns("project_knowledge_settings")}
+            if "last_sync_summary_json" not in pks_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_settings ADD COLUMN last_sync_summary_json JSON NOT NULL DEFAULT '{}'"))
+        if "project_knowledge_sync_items" in inspector.get_table_names():
+            pksi_columns = {column["name"] for column in inspector.get_columns("project_knowledge_sync_items")}
+            if "is_active" not in pksi_columns:
+                connection.execute(text("ALTER TABLE project_knowledge_sync_items ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE"))
+
+        if "projects" in inspector.get_table_names():
+            project_columns = {column["name"] for column in inspector.get_columns("projects")}
+            if "openai_vector_store_id" not in project_columns:
+                connection.execute(text("ALTER TABLE projects ADD COLUMN openai_vector_store_id VARCHAR(100)"))
+
+        if "project_skills" in inspector.get_table_names():
+            skill_columns = {column["name"] for column in inspector.get_columns("project_skills")}
+            if "updated_at" not in skill_columns:
+                connection.execute(text("ALTER TABLE project_skills ADD COLUMN updated_at TIMESTAMP"))
+                connection.execute(text("UPDATE project_skills SET updated_at = created_at WHERE updated_at IS NULL"))
+
+        if "project_skill_versions" in inspector.get_table_names():
+            version_columns = {column["name"] for column in inspector.get_columns("project_skill_versions")}
+            if "version_label" not in version_columns:
+                connection.execute(text("ALTER TABLE project_skill_versions ADD COLUMN version_label VARCHAR(50) NOT NULL DEFAULT 'v1'"))
+            if "compiled_runtime_text" not in version_columns:
+                connection.execute(text("ALTER TABLE project_skill_versions ADD COLUMN compiled_runtime_text TEXT NOT NULL DEFAULT ''"))
+            if "source_kind" not in version_columns:
+                connection.execute(text(
+                    "ALTER TABLE project_skill_versions ADD COLUMN source_kind VARCHAR(80) NOT NULL DEFAULT 'legacy_project_skill_settings'"
+                ))
