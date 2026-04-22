@@ -1,20 +1,21 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams, Link } from "react-router-dom";
+import { ChevronLeft, Plus } from "lucide-react";
 import { ChatComposer } from "../../components/chat/chat-composer";
 import { ChatConversationSidebar } from "../../components/chat/chat-conversation-sidebar";
 import { ChatDebugPanel } from "../../components/chat/chat-debug-panel";
-import { ChatHeader } from "../../components/chat/chat-header";
 import { ChatMessageList } from "../../components/chat/chat-message-list";
+import { ChatUseCaseSelector } from "../../components/chat/chat-use-case-selector";
 import type { ChatStarterPrompt, ChatThreadState } from "../../components/chat/chat-ui-types";
 import {
-  type ChatNodeConversationPreview,
-  type ChatNodeMessageDetail,
-  type ChatNodeMessagePreview,
-  type ChatNodeThread,
-  useChatNodeConversations,
-  useChatNodeThread,
-} from "../../hooks/use-chat-node";
+  type ChatConversationPreview,
+  type ChatMessageDetail,
+  type ChatMessagePreview,
+  type ChatThread,
+  useChatConversations,
+  useChatThread,
+} from "../../hooks/use-chat-conversations";
 import { useDocuments } from "../../hooks/use-documents";
 import { useProjects } from "../../hooks/use-projects";
 import { useSpaces } from "../../hooks/use-spaces";
@@ -23,142 +24,141 @@ import { useTopics } from "../../hooks/use-topics";
 import { api } from "../../lib/api";
 import { featureFlags } from "../../lib/feature-flags";
 import { isLegacyEntitySlug, resolveEntityBySlug, spaceChatPath, spaceOverviewPath } from "../../lib/routes";
+import type { ChatProposedActionCard } from "../../hooks/use-chat-conversations";
 import { cn } from "../../lib/utils";
 
-type ChatApiResponse = {
-  answer_markdown?: string;
-  openai_response_id?: string;
-  certainty?: Record<string, unknown>;
-  related_objects?: Array<{ kind?: string; type?: string; id?: string; label?: string; title?: string }>;
-  proposed_actions?: Array<{
-    action_id?: string;
-    id?: string;
-    type?: string;
-    label?: string;
-    requires_confirmation?: boolean;
-    payload?: Record<string, unknown>;
-  }>;
+export type UseCase =
+  | "analyse"
+  | "bogue"
+  | "recette"
+  | "question_generale"
+  | "redaction_besoin"
+  | "structuration_sujet";
+
+type ChatTurnResponse = {
+  conversation: { id: string; title: string; active_use_case: string | null };
+  appended_messages: Array<{ id: string; role: string; preview_text: string; created_at: string }>;
+  assistant_detail: {
+    answer_markdown: string;
+    mode: string;
+    understanding: string;
+    proposed_actions: Array<{
+      action_id?: string;
+      id?: string;
+      type?: string;
+      label?: string;
+      requires_confirmation?: boolean;
+      payload?: Record<string, unknown>;
+    }>;
+    related_objects: Array<{ kind?: string; id?: string; label?: string }>;
+    next_actions: string[];
+    sources_used: Array<{ doc_id: string; title: string; role: string }>;
+    evidence_level: string;
+    document_backed: boolean;
+  };
+  turn_meta: {
+    use_case: string;
+    turn_classification: string;
+    provider: string;
+    retrieval_used: boolean;
+    persisted: boolean;
+    snapshot_id: string | null;
+    retrieved_docs_count: number;
+    retained_docs_count: number;
+    evidence_count: number;
+    corpus_status: string;
+    document_backed: boolean;
+    evidence_level: string;
+    warning_no_docs: string | null;
+  };
 };
 
-const EMPTY_CONVERSATIONS: ChatNodeConversationPreview[] = [];
+const EMPTY_CONVERSATIONS: ChatConversationPreview[] = [];
 const EMPTY_TOPICS: { id?: string }[] = [];
 const EMPTY_TICKETS: { id?: string }[] = [];
 const EMPTY_DOCUMENTS: { id?: string }[] = [];
 
-function buildConversationHistory(messages: ChatNodeMessagePreview[], details: Record<string, ChatNodeMessageDetail>) {
-  return messages.slice(-10).map((message) => {
-    const detail = details[message.id];
-    const content =
-      detail?.role === "assistant"
-        ? (detail.rendered_answer ?? detail.full_text)
-        : detail?.full_text ?? message.preview_text;
-    return { role: message.role, content };
-  });
-}
-
-function buildAssistantMetadata(data: ChatApiResponse) {
+function turnMessageToPreview(
+  msg: { id: string; role: string; preview_text: string; created_at: string },
+): ChatMessagePreview {
   return {
-    answer_markdown: typeof data.answer_markdown === "string" ? data.answer_markdown : "",
-    openai_response_id: typeof data.openai_response_id === "string" ? data.openai_response_id : undefined,
-    certainty: typeof data.certainty === "object" && data.certainty !== null ? data.certainty : undefined,
-    related_objects: Array.isArray(data.related_objects)
-      ? data.related_objects
-          .map((item) => ({
-            kind: String(item.kind ?? item.type ?? "").trim(),
-            id: String(item.id ?? "").trim(),
-            label: String(item.label ?? item.title ?? "").trim(),
-          }))
-          .filter((item) => item.kind && item.id && item.label)
-          .slice(0, 8)
-      : [],
-    proposed_actions: Array.isArray(data.proposed_actions)
-      ? data.proposed_actions
-          .map((item) => ({
-            action_id: String(item.action_id ?? item.id ?? "").trim(),
-            type: String(item.type ?? "").trim(),
-            label: String(item.label ?? "").trim(),
-            requires_confirmation: item.requires_confirmation !== false,
-            payload: typeof item.payload === "object" && item.payload !== null ? item.payload : {},
-          }))
-          .filter((item) => item.action_id && item.type && item.label)
-          .slice(0, 6)
-      : [],
+    id: msg.id,
+    role: msg.role as "user" | "assistant",
+    created_at: msg.created_at,
+    preview_text: msg.preview_text,
+    is_truncated: msg.preview_text.endsWith("…"),
+    has_detail: true,
+    has_actions: false,
+    state: "ready",
   };
 }
 
-function buildAssistantDetail(messageId: string, createdAt: string, data: ChatApiResponse): ChatNodeMessageDetail {
-  const metadata = buildAssistantMetadata(data);
-  const answer = metadata.answer_markdown ?? "";
-
+function buildAssistantDetailFromTurn(
+  msgId: string,
+  createdAt: string,
+  detail: ChatTurnResponse["assistant_detail"],
+): ChatMessageDetail {
   return {
-    id: messageId,
+    id: msgId,
     role: "assistant",
     created_at: createdAt,
-    full_text: answer,
-    rendered_answer: answer,
-    certainty: metadata.certainty ?? null,
-    related_objects: metadata.related_objects ?? [],
-    actions: (metadata.proposed_actions ?? []).map((action) => ({
-      id: action.action_id,
-      type: action.type,
-      label: action.label,
-      requires_confirmation: action.requires_confirmation,
-      status: action.requires_confirmation ? "confirmation" : "ready",
-      target_label:
-        typeof action.payload?.target_label === "string"
-          ? action.payload.target_label
-          : typeof action.payload?.title === "string"
-            ? action.payload.title
-            : typeof action.payload?.label === "string"
-              ? action.payload.label
-              : null,
-    })),
+    full_text: detail.answer_markdown,
+    rendered_answer: detail.answer_markdown,
+    certainty: null,
+    related_objects: (detail.related_objects ?? [])
+      .map((obj) => ({
+        kind: String(obj.kind ?? "").trim(),
+        id: String(obj.id ?? "").trim(),
+        label: String(obj.label ?? "").trim(),
+      }))
+      .filter((obj) => obj.kind && obj.id && obj.label),
+    actions: (detail.proposed_actions ?? [])
+      .map((action) => ({
+        id: String(action.action_id ?? action.id ?? "").trim(),
+        type: String(action.type ?? "").trim(),
+        label: String(action.label ?? "").trim(),
+        requires_confirmation: action.requires_confirmation !== false,
+        status: action.requires_confirmation !== false ? "confirmation" : "ready",
+        target_label: null,
+      }))
+      .filter((action) => action.id && action.type && action.label),
     debug_available: false,
+    document_sources: [],
+    sources_used: detail.sources_used ?? [],
+    evidence_level: detail.evidence_level ?? "none",
+    document_backed: detail.document_backed ?? false,
+    warning_no_docs: null,
+    retrieved_docs_count: 0,
+    retained_docs_count: 0,
+    evidence_count: 0,
+    corpus_status: "not_indexed",
   };
 }
 
-function upsertConversation(conversations: ChatNodeConversationPreview[], nextConversation: ChatNodeConversationPreview) {
-  return [nextConversation, ...conversations.filter((conversation) => conversation.id !== nextConversation.id)];
+function buildConversationPreview(
+  id: string,
+  title: string,
+  activeUseCase: string | null,
+  assistantPreviewText: string,
+): ChatConversationPreview {
+  return {
+    id,
+    title,
+    active_use_case: activeUseCase,
+    last_message_at: new Date().toISOString(),
+    status: "ready",
+    unread_count: 0,
+    last_assistant_preview: assistantPreviewText,
+  };
 }
 
-function sameConversationList(a: ChatNodeConversationPreview[], b: ChatNodeConversationPreview[]) {
-  if (a === b) return true;
-  if (a.length !== b.length) return false;
-  for (let index = 0; index < a.length; index += 1) {
-    const left = a[index];
-    const right = b[index];
-    if (!left || !right) return false;
-    if (
-      left.id !== right.id
-      || left.title !== right.title
-      || left.last_message_at !== right.last_message_at
-      || left.last_assistant_preview !== right.last_assistant_preview
-      || left.status !== right.status
-      || left.unread_count !== right.unread_count
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function mergePreviewMessages(incoming: ChatNodeMessagePreview[], current: ChatNodeMessagePreview[]) {
-  const map = new Map<string, ChatNodeMessagePreview>();
-  [...incoming, ...current].forEach((message) => map.set(message.id, message));
-  return [...map.values()].sort((a, b) => {
-    const timeDelta = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-    if (timeDelta !== 0) return timeDelta;
-    if (a.role !== b.role) return a.role === "user" ? -1 : 1;
-    return a.id.localeCompare(b.id);
-  });
-}
-
-function buildUserMessagePreview(content: string): ChatNodeMessagePreview {
+function buildUserMessagePreview(content: string): ChatMessagePreview {
+  const preview = content.length > 240 ? `${content.slice(0, 240).trimEnd()}…` : content;
   return {
     id: crypto.randomUUID(),
     role: "user",
     created_at: new Date().toISOString(),
-    preview_text: content.length > 240 ? `${content.slice(0, 240).trimEnd()}...` : content,
+    preview_text: preview,
     is_truncated: content.length > 240,
     has_detail: content.length > 240,
     has_actions: false,
@@ -166,18 +166,57 @@ function buildUserMessagePreview(content: string): ChatNodeMessagePreview {
   };
 }
 
-function buildAssistantMessagePreview(data: ChatApiResponse): ChatNodeMessagePreview {
-  const answer = typeof data.answer_markdown === "string" ? data.answer_markdown.trim() : "";
+function buildAssistantLoadingPreview(): ChatMessagePreview {
   return {
     id: crypto.randomUUID(),
     role: "assistant",
     created_at: new Date().toISOString(),
-    preview_text: answer.length > 1800 ? `${answer.slice(0, 1800).trimEnd()}...` : answer,
-    is_truncated: answer.length > 1800,
-    has_detail: !!answer,
-    has_actions: Array.isArray(data.proposed_actions) && data.proposed_actions.length > 0,
-    state: "ready",
+    preview_text: "",
+    is_truncated: false,
+    has_detail: false,
+    has_actions: false,
+    state: "loading",
   };
+}
+
+function upsertConversation(
+  conversations: ChatConversationPreview[],
+  next: ChatConversationPreview,
+) {
+  return [next, ...conversations.filter((c) => c.id !== next.id)];
+}
+
+function sameConversationList(a: ChatConversationPreview[], b: ChatConversationPreview[]) {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const l = a[i];
+    const r = b[i];
+    if (!l || !r) return false;
+    if (
+      l.id !== r.id ||
+      l.title !== r.title ||
+      l.active_use_case !== r.active_use_case ||
+      l.last_message_at !== r.last_message_at ||
+      l.last_assistant_preview !== r.last_assistant_preview
+    )
+      return false;
+  }
+  return true;
+}
+
+function mergePreviewMessages(
+  incoming: ChatMessagePreview[],
+  current: ChatMessagePreview[],
+) {
+  const map = new Map<string, ChatMessagePreview>();
+  [...incoming, ...current].forEach((m) => map.set(m.id, m));
+  return [...map.values()].sort((a, b) => {
+    const t = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    if (t !== 0) return t;
+    if (a.role !== b.role) return a.role === "user" ? -1 : 1;
+    return a.id.localeCompare(b.id);
+  });
 }
 
 export function ChatPage() {
@@ -185,12 +224,15 @@ export function ChatPage() {
   const { projectSlug, spaceSlug } = useParams<{ projectSlug: string; spaceSlug: string }>();
   const [searchParams] = useSearchParams();
   const debugMode =
-    featureFlags.chatDebugPanelsEnabled
-    || (featureFlags.chatExplicitDebugAllowed && searchParams.get("debug") === "1");
+    featureFlags.chatDebugPanelsEnabled ||
+    (featureFlags.chatExplicitDebugAllowed && searchParams.get("debug") === "1");
   const queryClient = useQueryClient();
 
   const { data: projects = [] } = useProjects();
-  const project = useMemo(() => resolveEntityBySlug(projects, projectSlug), [projectSlug, projects]);
+  const project = useMemo(
+    () => resolveEntityBySlug(projects, projectSlug),
+    [projectSlug, projects],
+  );
   const projectId = project?.id;
   const { data: spaces = [] } = useSpaces(projectId);
   const space = useMemo(() => resolveEntityBySlug(spaces, spaceSlug), [spaceSlug, spaces]);
@@ -212,27 +254,27 @@ export function ChatPage() {
   const { data: tickets = EMPTY_TICKETS } = useTickets({ spaceId });
   const { data: documents = EMPTY_DOCUMENTS } = useDocuments({ spaceId });
 
-  const conversationsQuery = useChatNodeConversations(spaceId, projectId);
+  const conversationsQuery = useChatConversations(spaceId, projectId);
   const conversations = conversationsQuery.data ?? EMPTY_CONVERSATIONS;
   const loadingConversations = conversationsQuery.isLoading;
 
-  const [conversationList, setConversationList] = useState<ChatNodeConversationPreview[]>([]);
+  const [conversationList, setConversationList] = useState<ChatConversationPreview[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [isNewConversationMode, setIsNewConversationMode] = useState(false);
   const [threadOffset, setThreadOffset] = useState(0);
+  const [selectedUseCase, setSelectedUseCase] = useState<UseCase | null>(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [creatingConversation, setCreatingConversation] = useState(false);
   const [deletingConversationId, setDeletingConversationId] = useState<string | null>(null);
   const [renamingConversationId, setRenamingConversationId] = useState<string | null>(null);
-  const [messageDetails, setMessageDetails] = useState<Record<string, ChatNodeMessageDetail>>({});
+  const [messageDetails, setMessageDetails] = useState<Record<string, ChatMessageDetail>>({});
   const [loadingMessageIds, setLoadingMessageIds] = useState<Set<string>>(new Set());
-  const [loadedThreadMessages, setLoadedThreadMessages] = useState<ChatNodeMessagePreview[]>([]);
+  const [loadedThreadMessages, setLoadedThreadMessages] = useState<ChatMessagePreview[]>([]);
   const [threadState, setThreadState] = useState<ChatThreadState | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [openDurationMs, setOpenDurationMs] = useState<number | null>(null);
   const [initialRenderMs, setInitialRenderMs] = useState<number | null>(null);
-  const [createDurationMs, setCreateDurationMs] = useState<number | null>(null);
   const [sendDurationMs, setSendDurationMs] = useState<number | null>(null);
   const [assistantRenderMs, setAssistantRenderMs] = useState<number | null>(null);
 
@@ -243,11 +285,15 @@ export function ChatPage() {
   const renderStartRef = useRef<number | null>(null);
   const threadRenderCountRef = useRef(0);
   const lastHydratedConversationIdRef = useRef<string | null>(null);
-  const conversationListRef = useRef<ChatNodeConversationPreview[]>(EMPTY_CONVERSATIONS);
+  const conversationListRef = useRef<ChatConversationPreview[]>(EMPTY_CONVERSATIONS);
   const loadingMessageIdsRef = useRef<Set<string>>(new Set());
 
-  const threadQuery = useChatNodeThread(selectedConversationId, 20, threadOffset);
+  const threadQuery = useChatThread(selectedConversationId, 20, threadOffset);
   threadRenderCountRef.current += 1;
+  const activeConversation = useMemo(
+    () => conversationList.find((conversation) => conversation.id === selectedConversationId) ?? null,
+    [conversationList, selectedConversationId],
+  );
 
   useEffect(() => {
     if (sameConversationList(conversationListRef.current, conversations)) return;
@@ -260,11 +306,25 @@ export function ChatPage() {
   }, [conversationList]);
 
   useEffect(() => {
+    if (isNewConversationMode) return;
     if (!selectedConversationId && conversationList.length > 0) {
       setSelectedConversationId(conversationList[0].id);
       setThreadOffset(0);
     }
-  }, [conversationList, selectedConversationId]);
+  }, [conversationList, isNewConversationMode, selectedConversationId]);
+
+  useEffect(() => {
+    if (!selectedConversationId) return;
+    const activeUseCase =
+      threadQuery.data?.conversation.active_use_case ?? activeConversation?.active_use_case ?? null;
+    if (activeUseCase) {
+      setSelectedUseCase(activeUseCase as UseCase);
+    }
+  }, [
+    activeConversation?.active_use_case,
+    selectedConversationId,
+    threadQuery.data?.conversation.active_use_case,
+  ]);
 
   useEffect(() => {
     if (lastHydratedConversationIdRef.current === selectedConversationId) return;
@@ -290,11 +350,9 @@ export function ChatPage() {
       hasMore: page.has_more,
       nextOffset: page.next_offset,
     });
-    setLoadedThreadMessages((previous) => {
-      if (threadOffset === 0 && previous.length === 0) {
-        return page.messages;
-      }
-      return mergePreviewMessages(page.messages, previous);
+    setLoadedThreadMessages((prev) => {
+      if (threadOffset === 0 && prev.length === 0) return page.messages;
+      return mergePreviewMessages(page.messages, prev);
     });
     if (openStartRef.current != null && openDurationMs == null) {
       setOpenDurationMs(performance.now() - openStartRef.current);
@@ -303,7 +361,8 @@ export function ChatPage() {
   }, [openDurationMs, threadOffset, threadQuery.data]);
 
   useEffect(() => {
-    if (!loadedThreadMessages.length || renderStartRef.current == null || initialRenderMs != null) return;
+    if (!loadedThreadMessages.length || renderStartRef.current == null || initialRenderMs != null)
+      return;
     const frame = requestAnimationFrame(() => {
       setInitialRenderMs(performance.now() - renderStartRef.current!);
       renderStartRef.current = null;
@@ -312,29 +371,26 @@ export function ChatPage() {
   }, [initialRenderMs, loadedThreadMessages]);
 
   useEffect(() => {
-    if (!sendError) return;
-    if (!input.trim()) return;
+    if (!sendError || !input.trim()) return;
     setSendError(null);
   }, [input, sendError]);
 
   const lastMessageId = loadedThreadMessages[loadedThreadMessages.length - 1]?.id;
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      threadBottomRef.current?.scrollIntoView({
-        block: "end",
-        behavior: selectedConversationId ? "smooth" : "auto",
-      });
+      threadBottomRef.current?.scrollIntoView({ block: "end", behavior: selectedConversationId ? "smooth" : "auto" });
     });
     return () => cancelAnimationFrame(frame);
   }, [lastMessageId, selectedConversationId, sending]);
 
   const payloadMeasure = useMemo(() => {
-    if (!debugMode) {
-      return { previewChars: 0, detailChars: 0, largestPreviewChars: 0 };
-    }
-    const previewChars = loadedThreadMessages.reduce((sum, message) => sum + message.preview_text.length, 0);
-    const detailChars = Object.values(messageDetails).reduce((sum, detail) => sum + detail.full_text.length, 0);
-    const largestPreviewChars = loadedThreadMessages.reduce((max, message) => Math.max(max, message.preview_text.length), 0);
+    if (!debugMode) return { previewChars: 0, detailChars: 0, largestPreviewChars: 0 };
+    const previewChars = loadedThreadMessages.reduce((s, m) => s + m.preview_text.length, 0);
+    const detailChars = Object.values(messageDetails).reduce((s, d) => s + d.full_text.length, 0);
+    const largestPreviewChars = loadedThreadMessages.reduce(
+      (max, m) => Math.max(max, m.preview_text.length),
+      0,
+    );
     return { previewChars, detailChars, largestPreviewChars };
   }, [debugMode, loadedThreadMessages, messageDetails]);
 
@@ -346,325 +402,248 @@ export function ChatPage() {
     });
   }, []);
 
-  const activeConversation = useMemo(
-    () => conversationList.find((conversation) => conversation.id === selectedConversationId) ?? null,
-    [conversationList, selectedConversationId],
-  );
-
   const conversationTitle =
-    threadQuery.data?.conversation.title
-    ?? activeConversation?.title
-    ?? (conversationList.length === 0 ? "Discussion IA" : "Selectionnez une discussion");
+    threadQuery.data?.conversation.title ??
+    activeConversation?.title ??
+    (conversationList.length === 0 ? "Discussion IA" : "Sélectionnez une discussion");
 
-  const starterPrompts = useMemo<ChatStarterPrompt[]>(() => [
-    {
-      id: "brief",
-      label: "Brief exécutif",
-      description: `Résume ${space?.name ?? "cet espace"} à partir des tickets, topics et documents actifs.`,
-      prompt: `Prépare un brief exécutif sur ${space?.name ?? "cet espace"} avec priorités, risques, signaux faibles et décisions à prendre.`,
-    },
-    {
-      id: "decision",
-      label: "Aide à la décision",
-      description: "Structure les options, les compromis et la recommandation la plus actionnable.",
-      prompt: `Aide-moi à arbitrer les priorités de ${space?.name ?? "cet espace"} avec une recommandation claire, les compromis et un plan d'action.`,
-    },
-    {
-      id: "plan",
-      label: "Plan d'action",
-      description: "Transforme le contexte disponible en prochaines étapes concrètes.",
-      prompt: `Propose un plan d'action sur 7 jours pour ${space?.name ?? "cet espace"} à partir du contexte disponible.`,
-    },
-    {
-      id: "risks",
-      label: "Risques et blocages",
-      description: "Isole les sujets sensibles, ce qui manque et ce qu'il faut trancher vite.",
-      prompt: `Analyse ${space?.name ?? "cet espace"} et liste les risques, blocages, dépendances et points à confirmer avec un ordre de traitement.`,
-    },
-  ], [space?.name]);
+  const starterPrompts = useMemo<ChatStarterPrompt[]>(
+    () => [
+      {
+        id: "brief",
+        label: "Brief exécutif",
+        description: `Résume ${space?.name ?? "cet espace"} à partir des tickets, topics et documents actifs.`,
+        prompt: `Prépare un brief exécutif sur ${space?.name ?? "cet espace"} avec priorités, risques, signaux faibles et décisions à prendre.`,
+      },
+      {
+        id: "decision",
+        label: "Aide à la décision",
+        description: "Structure les options, les compromis et la recommandation la plus actionnable.",
+        prompt: `Aide-moi à arbitrer les priorités de ${space?.name ?? "cet espace"} avec une recommandation claire, les compromis et un plan d'action.`,
+      },
+      {
+        id: "plan",
+        label: "Plan d'action",
+        description: "Transforme le contexte disponible en prochaines étapes concrètes.",
+        prompt: `Propose un plan d'action sur 7 jours pour ${space?.name ?? "cet espace"} à partir du contexte disponible.`,
+      },
+      {
+        id: "risks",
+        label: "Risques et blocages",
+        description: "Isole les sujets sensibles, ce qui manque et ce qu'il faut trancher vite.",
+        prompt: `Analyse ${space?.name ?? "cet espace"} et liste les risques, blocages, dépendances et points à confirmer avec un ordre de traitement.`,
+      },
+    ],
+    [space?.name],
+  );
 
   const updateConversationCache = useCallback(
     (
       next:
-        | ChatNodeConversationPreview[]
-        | ((previous: ChatNodeConversationPreview[]) => ChatNodeConversationPreview[]),
+        | ChatConversationPreview[]
+        | ((prev: ChatConversationPreview[]) => ChatConversationPreview[]),
     ) => {
-      const previous = conversationListRef.current;
-      const resolved = typeof next === "function" ? next(previous) : next;
-      if (sameConversationList(previous, resolved)) return;
+      const prev = conversationListRef.current;
+      const resolved = typeof next === "function" ? next(prev) : next;
+      if (sameConversationList(prev, resolved)) return;
       conversationListRef.current = resolved;
-      queryClient.setQueryData(["chat-node", "conversations", spaceId, projectId], resolved);
+      queryClient.setQueryData(["chat", "conversations", spaceId, projectId], resolved);
       setConversationList(resolved);
     },
     [projectId, queryClient, spaceId],
   );
 
-  const createEmptyConversation = useCallback(async () => {
-    if (!spaceId || !projectId) return null;
-    const startedAt = performance.now();
-    setCreatingConversation(true);
-    setSendError(null);
-    try {
-      const created = await api.post<ChatNodeThread>("/api/ai/chat-node/conversations", {
-        space_id: spaceId,
-        project_id: projectId,
-        title: "Nouvelle discussion",
-        messages: [],
-      });
-      updateConversationCache((previous) => upsertConversation(previous, created.conversation));
-      queryClient.setQueryData(["chat-node", "thread", created.conversation.id, 20, 0], created);
-      lastHydratedConversationIdRef.current = created.conversation.id;
-      setSelectedConversationId(created.conversation.id);
-      setThreadOffset(0);
-      setLoadedThreadMessages(created.messages);
-      setThreadState({
-        total: created.total_message_count,
-        loaded: created.loaded_message_count,
-        hasMore: created.has_more,
-        nextOffset: created.next_offset,
-      });
-      setInput("");
-      setCreateDurationMs(performance.now() - startedAt);
-      setMobileSidebarOpen(false);
-      focusComposer();
-      return created;
-    } finally {
-      setCreatingConversation(false);
-    }
-  }, [focusComposer, projectId, queryClient, spaceId, updateConversationCache]);
+  const openMessageDetail = useCallback(
+    async (messageId: string) => {
+      if (!selectedConversationId) return;
+      if (messageDetails[messageId]) return;
+      if (loadingMessageIdsRef.current.has(messageId)) return;
 
-  const openMessageDetail = useCallback(async (messageId: string) => {
-    if (!selectedConversationId) return;
-    if (messageDetails[messageId]) return;
-    if (loadingMessageIdsRef.current.has(messageId)) return;
-
-    loadingMessageIdsRef.current.add(messageId);
-    setLoadingMessageIds((previous) => {
-      const next = new Set(previous);
-      next.add(messageId);
-      return next;
-    });
-
-    try {
-      const detail = await api.get<ChatNodeMessageDetail>(`/api/ai/chat-node/conversations/${selectedConversationId}/messages/${messageId}`);
-      setMessageDetails((previous) => ({ ...previous, [messageId]: detail }));
-    } finally {
-      loadingMessageIdsRef.current.delete(messageId);
-      setLoadingMessageIds((previous) => {
-        const next = new Set(previous);
-        next.delete(messageId);
+      loadingMessageIdsRef.current.add(messageId);
+      setLoadingMessageIds((prev) => {
+        const next = new Set(prev);
+        next.add(messageId);
         return next;
       });
-    }
-  }, [messageDetails, selectedConversationId]);
 
-  const deleteConversation = useCallback(async (conversationId: string) => {
-    if (deletingConversationId) return;
-    const confirmed = window.confirm("Supprimer definitivement cette discussion ?");
-    if (!confirmed) return;
-    setDeletingConversationId(conversationId);
-    try {
-      await api.delete<void>(`/api/ai/conversations/${conversationId}`);
-      queryClient.removeQueries({ queryKey: ["chat-node", "thread", conversationId] });
-      updateConversationCache((previous) => {
-        const remaining = previous.filter((conversation) => conversation.id !== conversationId);
-        if (selectedConversationId === conversationId) {
-          setSelectedConversationId(remaining[0]?.id ?? null);
-          setThreadOffset(0);
-          setLoadedThreadMessages([]);
-          setThreadState(null);
-          setMessageDetails({});
-          setInput("");
-          setSendError(null);
-        }
-        return remaining;
-      });
-    } finally {
-      setDeletingConversationId(null);
-    }
-  }, [deletingConversationId, queryClient, selectedConversationId, updateConversationCache]);
+      try {
+        const detail = await api.get<ChatMessageDetail>(
+          `/api/ai/conversations/${selectedConversationId}/messages/${messageId}`,
+        );
+        setMessageDetails((prev) => ({ ...prev, [messageId]: detail }));
+      } finally {
+        loadingMessageIdsRef.current.delete(messageId);
+        setLoadingMessageIds((prev) => {
+          const next = new Set(prev);
+          next.delete(messageId);
+          return next;
+        });
+      }
+    },
+    [messageDetails, selectedConversationId],
+  );
 
-  const renameConversation = useCallback(async (conversationId: string, title: string) => {
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle || renamingConversationId) return false;
-    setRenamingConversationId(conversationId);
-    try {
-      const updated = await api.patch<{ id: string; title: string }>(`/api/ai/conversations/${conversationId}`, {
-        title: trimmedTitle,
-      });
-      updateConversationCache((previous) =>
-        previous.map((conversation) =>
-          conversation.id === conversationId
-            ? { ...conversation, title: updated.title }
-            : conversation,
-        ),
-      );
-      queryClient.setQueriesData(
-        { queryKey: ["chat-node", "thread", conversationId] },
-        (current: ChatNodeThread | undefined) =>
-          current
-            ? {
-                ...current,
-                conversation: {
-                  ...current.conversation,
-                  title: updated.title,
-                },
-              }
-            : current,
-      );
-      return true;
-    } finally {
-      setRenamingConversationId(null);
-    }
-  }, [queryClient, renamingConversationId, updateConversationCache]);
+  const deleteConversation = useCallback(
+    async (conversationId: string) => {
+      if (deletingConversationId) return;
+      const confirmed = window.confirm("Supprimer définitivement cette discussion ?");
+      if (!confirmed) return;
+      setDeletingConversationId(conversationId);
+      try {
+        await api.delete<void>(`/api/ai/conversations/${conversationId}`);
+        queryClient.removeQueries({ queryKey: ["chat", "thread", conversationId] });
+        updateConversationCache((prev) => {
+          const remaining = prev.filter((c) => c.id !== conversationId);
+          if (selectedConversationId === conversationId) {
+            setSelectedConversationId(remaining[0]?.id ?? null);
+            setThreadOffset(0);
+            setLoadedThreadMessages([]);
+            setThreadState(null);
+            setMessageDetails({});
+            setInput("");
+            setSendError(null);
+          }
+          return remaining;
+        });
+      } finally {
+        setDeletingConversationId(null);
+      }
+    },
+    [deletingConversationId, queryClient, selectedConversationId, updateConversationCache],
+  );
+
+  const renameConversation = useCallback(
+    async (conversationId: string, title: string) => {
+      const trimmed = title.trim();
+      if (!trimmed || renamingConversationId) return false;
+      setRenamingConversationId(conversationId);
+      try {
+        const updated = await api.patch<{ id: string; title: string }>(
+          `/api/ai/conversations/${conversationId}`,
+          { title: trimmed },
+        );
+        updateConversationCache((prev) =>
+          prev.map((c) => (c.id === conversationId ? { ...c, title: updated.title } : c)),
+        );
+        queryClient.setQueriesData(
+          { queryKey: ["chat", "thread", conversationId] },
+          (current: ChatThread | undefined) =>
+            current
+              ? { ...current, conversation: { ...current.conversation, title: updated.title } }
+              : current,
+        );
+        return true;
+      } finally {
+        setRenamingConversationId(null);
+      }
+    },
+    [queryClient, renamingConversationId, updateConversationCache],
+  );
 
   const sendMessage = useCallback(async () => {
     const trimmed = input.trim();
-    if (!trimmed || !spaceId || !projectId || sending || creatingConversation) return;
+    if (!trimmed || !spaceId || !projectId || sending || !selectedUseCase) return;
 
     setSendError(null);
 
-    let activeConversationId = selectedConversationId;
-    if (!activeConversationId) {
-      const created = await createEmptyConversation();
-      activeConversationId = created?.conversation.id ?? null;
-    }
-    if (!activeConversationId) return;
-
-    const history = buildConversationHistory(loadedThreadMessages, messageDetails);
     const userPreview = buildUserMessagePreview(trimmed);
-    const userDetail: ChatNodeMessageDetail = {
-      id: userPreview.id,
-      role: "user",
-      created_at: userPreview.created_at,
-      full_text: trimmed,
-      rendered_answer: null,
-      certainty: null,
-      related_objects: [],
-      actions: [],
-      debug_available: false,
-    };
+    const assistantLoading = buildAssistantLoadingPreview();
 
     setInput("");
-    setLoadedThreadMessages((previous) => [...previous, userPreview]);
-    setMessageDetails((previous) => ({ ...previous, [userPreview.id]: userDetail }));
-    setThreadState((previous) =>
-      previous
-        ? { ...previous, total: previous.total + 1, loaded: previous.loaded + 1 }
-        : { total: 1, loaded: 1, hasMore: false, nextOffset: null },
+    setLoadedThreadMessages((prev) => [...prev, userPreview, assistantLoading]);
+    setThreadState((prev) =>
+      prev
+        ? { ...prev, total: prev.total + 2, loaded: prev.loaded + 2 }
+        : { total: 2, loaded: 2, hasMore: false, nextOffset: null },
     );
     setSending(true);
     const sendStartedAt = performance.now();
-    let assistantPreviewId: string | null = null;
 
     try {
-      const data = await api.post<ChatApiResponse>("/api/ai/chat", {
+      const result = await api.post<ChatTurnResponse>("/api/ai/conversations/turns", {
         message: trimmed,
-        conversation_id: activeConversationId,
+        use_case: selectedUseCase,
         space_id: spaceId,
         project_id: projectId,
         topic_id: null,
-        debug: false,
-        conversation_history: history,
-        response_style: "balanced",
-        detail_level: "normal",
-        show_confidence: true,
-        show_suggestions: true,
+        conversation_id: selectedConversationId,
       });
 
-      const assistantPreview = buildAssistantMessagePreview(data);
-      const assistantDetail = buildAssistantDetail(assistantPreview.id, assistantPreview.created_at, data);
-      assistantPreviewId = assistantPreview.id;
+      const persistedMessages = result.appended_messages.map(turnMessageToPreview);
+      const persistedUser = persistedMessages.find((m) => m.role === "user");
+      const persistedAssistant = persistedMessages.find((m) => m.role === "assistant");
 
-      setLoadedThreadMessages((previous) => [...previous, assistantPreview]);
-      setMessageDetails((previous) => ({ ...previous, [assistantPreview.id]: assistantDetail }));
-      setThreadState((previous) =>
-        previous
-          ? { ...previous, total: previous.total + 1, loaded: previous.loaded + 1 }
-          : { total: 2, loaded: 2, hasMore: false, nextOffset: null },
-      );
-
-      const appendResult = await api.post<{ conversation: ChatNodeConversationPreview; appended_messages: ChatNodeMessagePreview[] }>(
-        `/api/ai/chat-node/conversations/${activeConversationId}/messages`,
-        {
-          messages: [
-            { role: "user", content: trimmed, metadata: {} },
-            { role: "assistant", content: data.answer_markdown ?? "", metadata: buildAssistantMetadata(data) },
-          ],
-        },
-      );
-      const persistedUser = appendResult.appended_messages.find((message) => message.role === "user");
-      const persistedAssistant = appendResult.appended_messages.find((message) => message.role === "assistant");
-      const persistedMessages = [persistedUser, persistedAssistant].filter(Boolean) as ChatNodeMessagePreview[];
-      let mergedMessages: ChatNodeMessagePreview[] = [];
-
-      setLoadedThreadMessages((previous) => {
-        const remaining = previous.filter((message) => message.id !== userPreview.id && message.id !== assistantPreview.id);
-        mergedMessages = mergePreviewMessages(persistedMessages, remaining);
-        return mergedMessages;
-      });
-
-      if (mergedMessages.length > 0) {
-        queryClient.setQueryData(
-          ["chat-node", "thread", activeConversationId, 20, 0],
-          (current: ChatNodeThread | undefined) =>
-            current
-              ? {
-                  ...current,
-                  conversation: appendResult.conversation,
-                  messages: mergedMessages,
-                  total_message_count: Math.max(current.total_message_count, mergedMessages.length),
-                  loaded_message_count: mergedMessages.length,
-                  has_more: current.has_more,
-                  next_offset: current.next_offset,
-                }
-              : current,
+      setLoadedThreadMessages((prev) => {
+        const remaining = prev.filter(
+          (m) => m.id !== userPreview.id && m.id !== assistantLoading.id,
         );
+        return mergePreviewMessages(persistedMessages, remaining);
+      });
+
+      if (persistedAssistant) {
+        const assistantDetail = {
+          ...buildAssistantDetailFromTurn(
+            persistedAssistant.id,
+            persistedAssistant.created_at,
+            result.assistant_detail,
+          ),
+          warning_no_docs: result.turn_meta.warning_no_docs ?? null,
+          retrieved_docs_count: result.turn_meta.retrieved_docs_count ?? 0,
+          retained_docs_count: result.turn_meta.retained_docs_count ?? 0,
+          evidence_count: result.turn_meta.evidence_count ?? 0,
+          corpus_status: result.turn_meta.corpus_status ?? "not_indexed",
+        };
+        setMessageDetails((prev) => ({
+          ...prev,
+          [persistedAssistant.id]: assistantDetail,
+          ...(persistedUser ? { [persistedUser.id]: {
+            id: persistedUser.id,
+            role: "user",
+            created_at: persistedUser.created_at,
+            full_text: trimmed,
+            rendered_answer: null,
+            certainty: null,
+            related_objects: [],
+            actions: [],
+            debug_available: false,
+            document_sources: [],
+            sources_used: [],
+            evidence_level: "none",
+            document_backed: false,
+            warning_no_docs: null,
+          } } : {}),
+        }));
       }
 
-      setMessageDetails((previous) => {
-        const next = { ...previous };
-        if (persistedUser && next[userPreview.id]) {
-          next[persistedUser.id] = { ...next[userPreview.id], id: persistedUser.id, created_at: persistedUser.created_at };
-          delete next[userPreview.id];
-        }
-        if (persistedAssistant && next[assistantPreview.id]) {
-          next[persistedAssistant.id] = {
-            ...next[assistantPreview.id],
-            id: persistedAssistant.id,
-            created_at: persistedAssistant.created_at,
-          };
-          delete next[assistantPreview.id];
-        }
-        return next;
-      });
+      const conversationPreview = buildConversationPreview(
+        result.conversation.id,
+        result.conversation.title,
+        result.conversation.active_use_case,
+        result.assistant_detail.answer_markdown.slice(0, 200),
+      );
 
-      updateConversationCache((previous) => upsertConversation(previous, appendResult.conversation));
+      if (!selectedConversationId) {
+        lastHydratedConversationIdRef.current = result.conversation.id;
+        setIsNewConversationMode(false);
+        setSelectedConversationId(result.conversation.id);
+        setThreadOffset(0);
+      }
+
+      updateConversationCache((prev) => upsertConversation(prev, conversationPreview));
+      queryClient.invalidateQueries({ queryKey: ["chat", "conversations", spaceId, projectId] });
+
       setSendDurationMs(performance.now() - sendStartedAt);
-      const renderStartedAt = performance.now();
-      requestAnimationFrame(() => setAssistantRenderMs(performance.now() - renderStartedAt));
+      requestAnimationFrame(() => setAssistantRenderMs(performance.now() - sendStartedAt));
       focusComposer();
     } catch {
       setInput(trimmed);
-      setLoadedThreadMessages((previous) =>
-        previous.filter((message) => message.id !== userPreview.id && message.id !== assistantPreviewId),
+      setLoadedThreadMessages((prev) =>
+        prev.filter((m) => m.id !== userPreview.id && m.id !== assistantLoading.id),
       );
-      setMessageDetails((previous) => {
-        const next = { ...previous };
-        delete next[userPreview.id];
-        if (assistantPreviewId) {
-          delete next[assistantPreviewId];
-        }
-        return next;
-      });
-      setThreadState((previous) =>
-        previous
-          ? {
-              ...previous,
-              total: Math.max(0, previous.total - (assistantPreviewId ? 2 : 1)),
-              loaded: Math.max(0, previous.loaded - (assistantPreviewId ? 2 : 1)),
-            }
-          : previous,
+      setThreadState((prev) =>
+        prev
+          ? { ...prev, total: Math.max(0, prev.total - 2), loaded: Math.max(0, prev.loaded - 2) }
+          : prev,
       );
       setSendError("Le message n'a pas pu être envoyé. Vérifiez la connexion puis relancez l'envoi.");
       focusComposer();
@@ -672,19 +651,29 @@ export function ChatPage() {
       setSending(false);
     }
   }, [
-    createEmptyConversation,
-    creatingConversation,
     focusComposer,
     input,
-    loadedThreadMessages,
-    messageDetails,
     projectId,
     queryClient,
     selectedConversationId,
+    selectedUseCase,
     sending,
     spaceId,
     updateConversationCache,
   ]);
+
+  const handleStartConversation = useCallback(() => {
+    setIsNewConversationMode(true);
+    setSelectedConversationId(null);
+    setLoadedThreadMessages([]);
+    setThreadState(null);
+    setMessageDetails({});
+    setInput("");
+    setSendError(null);
+    lastHydratedConversationIdRef.current = null;
+    setSelectedUseCase(null);
+    setMobileSidebarOpen(false);
+  }, []);
 
   const threadStateLabel = threadState ? `${threadState.loaded}/${threadState.total}` : "-";
   const backHref = spaceOverviewPath(
@@ -692,23 +681,68 @@ export function ChatPage() {
     { id: spaceId ?? "", name: space?.name ?? spaceSlug ?? "" },
   );
 
+  const handleActionClick = useCallback((action: ChatProposedActionCard) => {
+    const baseSuivi = spaceOverviewPath(
+      { id: projectId ?? "", name: projectSlug ?? "" },
+      { id: spaceId ?? "", name: space?.name ?? spaceSlug ?? "" },
+    );
+    const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
+    if (action.type === "create_ticket") {
+      navigate(`${baseSuivi}?view=kanban&create=ticket&returnTo=${returnTo}`);
+    } else if (action.type === "create_topic") {
+      navigate(`${baseSuivi}?view=topics&create=topic&returnTo=${returnTo}`);
+    } else if (action.type === "create_document") {
+      navigate(`${baseSuivi.replace("/suivi", "/documents")}`);
+    }
+  }, [navigate, projectId, projectSlug, spaceId, space?.name, spaceSlug]);
+  const isNewConversation = !selectedConversationId && loadedThreadMessages.length === 0;
+
+  const lastAssistantDetail = useMemo(() => {
+    const last = [...loadedThreadMessages].reverse().find((m) => m.role === "assistant");
+    return last ? messageDetails[last.id] : null;
+  }, [loadedThreadMessages, messageDetails]);
+
+  const contextTotal = topics.length + tickets.length + documents.length;
+
   return (
     <div className="chat-page">
-      <ChatHeader
-        backHref={backHref}
-        spaceName={space?.name}
-        projectName={project?.name}
-        conversationTitle={conversationTitle}
-        topicsCount={topics.length}
-        ticketsCount={tickets.length}
-        documentsCount={documents.length}
-        loadedMessages={threadState?.loaded ?? loadedThreadMessages.length}
-        totalMessages={threadState?.total ?? loadedThreadMessages.length}
-        creatingConversation={creatingConversation}
-        onCreateConversation={() => startTransition(() => void createEmptyConversation())}
-        onToggleSidebar={() => setMobileSidebarOpen(true)}
-      />
+      {/* Thin topbar */}
+      <div className="chat-topbar">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            className="chat-mobile-only chat-icon-button"
+            onClick={() => setMobileSidebarOpen(true)}
+            aria-label="Ouvrir les conversations"
+          >
+            <span className="text-[var(--ink-4)] text-sm">☰</span>
+          </button>
+          <Link to={backHref} className="chat-topbar-back">
+            <ChevronLeft className="h-3.5 w-3.5" />
+            {space?.name ?? "Espace"}
+          </Link>
+          {selectedUseCase && (
+            <button
+              type="button"
+              className="chat-toolbar-pill-subtle"
+              onClick={() => setSelectedUseCase(null)}
+              title="Changer de cas métier"
+            >
+              {selectedUseCase.replace(/_/g, " ")} ×
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          className="flex items-center gap-1.5 rounded-lg border border-[var(--rule)] bg-[var(--paper-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--ink-3)] hover:border-[var(--ink-4)] transition-colors"
+          onClick={() => startTransition(handleStartConversation)}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Nouvelle discussion
+        </button>
+      </div>
 
+      {/* 3-column grid */}
       <div className={cn("chat-shell", debugMode && "chat-shell-debug")}>
         <div
           className={cn(
@@ -724,22 +758,26 @@ export function ChatPage() {
           activeConversationId={selectedConversationId}
           loading={loadingConversations}
           error={conversationsQuery.isError}
-          creatingConversation={creatingConversation}
+          creatingConversation={false}
           deletingConversationId={deletingConversationId}
           renamingConversationId={renamingConversationId}
           onRetry={() => void conversationsQuery.refetch()}
-          onCreateConversation={() => startTransition(() => void createEmptyConversation())}
-          onSelectConversation={(id) => startTransition(() => {
-            if (selectedConversationId === id) return;
-            setSelectedConversationId(id);
-            setThreadOffset(0);
-            setMobileSidebarOpen(false);
-          })}
+          onCreateConversation={() => startTransition(handleStartConversation)}
+          onSelectConversation={(id) =>
+            startTransition(() => {
+              if (selectedConversationId === id) return;
+              setSelectedConversationId(id);
+              setThreadOffset(0);
+              setMobileSidebarOpen(false);
+            })
+          }
           onDeleteConversation={deleteConversation}
           onRenameConversation={renameConversation}
           onCloseMobile={() => setMobileSidebarOpen(false)}
           className={cn(
-            mobileSidebarOpen ? "translate-x-0 opacity-100" : "-translate-x-[110%] opacity-0 xl:translate-x-0 xl:opacity-100",
+            mobileSidebarOpen
+              ? "translate-x-0 opacity-100"
+              : "-translate-x-[110%] opacity-0 xl:translate-x-0 xl:opacity-100",
           )}
         />
 
@@ -747,59 +785,127 @@ export function ChatPage() {
           <div className="chat-main-panel">
             <div className="chat-thread-topbar">
               <div>
-                <p className="chat-thread-eyebrow">Conversation</p>
+                <p className="chat-thread-eyebrow">Fil actif</p>
                 <h2 className="chat-thread-title">{conversationTitle}</h2>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="chat-toolbar-pill-subtle">{threadStateLabel} messages</span>
-                <span className="chat-toolbar-pill-subtle">{topics.length + tickets.length + documents.length} sources de contexte</span>
-                <span className="chat-toolbar-pill-subtle">{space?.name ?? "Espace actif"}</span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="chat-toolbar-pill-subtle">{threadStateLabel} msg</span>
+                <span className="chat-toolbar-pill-subtle">{contextTotal} sources</span>
               </div>
             </div>
 
-            <ChatMessageList
-              messages={loadedThreadMessages}
-              messageDetails={messageDetails}
-              loadingMessageIds={loadingMessageIds}
-              threadState={threadState}
-              isLoadingThread={threadQuery.isLoading}
-              isFetchingThread={threadQuery.isFetching}
-              threadError={threadQuery.isError && !!selectedConversationId}
-              sending={sending}
-              onRetryThread={() => void threadQuery.refetch()}
-              onOpenMessageDetail={openMessageDetail}
-              onLoadMore={() => setThreadOffset((previous) => threadState?.nextOffset ?? previous)}
-              starterPrompts={starterPrompts}
-              onUseStarterPrompt={(prompt) => {
-                setInput(prompt);
-                focusComposer();
-              }}
-              scrollRef={threadScrollRef}
-              bottomRef={threadBottomRef}
-            />
+            {isNewConversation && !selectedUseCase ? (
+              <ChatUseCaseSelector onSelect={setSelectedUseCase} />
+            ) : (
+              <ChatMessageList
+                messages={loadedThreadMessages}
+                messageDetails={messageDetails}
+                loadingMessageIds={loadingMessageIds}
+                threadState={threadState}
+                isLoadingThread={threadQuery.isLoading}
+                isFetchingThread={threadQuery.isFetching}
+                threadError={threadQuery.isError && !!selectedConversationId}
+                sending={sending}
+                onRetryThread={() => void threadQuery.refetch()}
+                onOpenMessageDetail={openMessageDetail}
+                onActionClick={handleActionClick}
+                onLoadMore={() =>
+                  setThreadOffset((prev) => threadState?.nextOffset ?? prev)
+                }
+                starterPrompts={starterPrompts}
+                onUseStarterPrompt={(prompt) => {
+                  setInput(prompt);
+                  focusComposer();
+                }}
+                scrollRef={threadScrollRef}
+                bottomRef={threadBottomRef}
+              />
+            )}
 
-            <ChatComposer
-              value={input}
-              loading={sending}
-              error={sendError}
-              inputRef={composerRef}
-              contextCounts={{
-                topics: topics.length,
-                tickets: tickets.length,
-                documents: documents.length,
-              }}
-              onChange={setInput}
-              onSend={() => void sendMessage()}
-            />
+            {(selectedUseCase || !isNewConversation) && (
+              <ChatComposer
+                value={input}
+                loading={sending}
+                error={sendError}
+                inputRef={composerRef}
+                contextCounts={{
+                  topics: topics.length,
+                  tickets: tickets.length,
+                  documents: documents.length,
+                }}
+                onChange={setInput}
+                onSend={() => void sendMessage()}
+              />
+            )}
           </div>
         </section>
+
+        {/* Right context panel */}
+        <aside className="chat-context-panel hidden xl:block 2xl:block">
+          <div className="chat-context-section">
+            <span className="chat-context-eyebrow">Espace</span>
+            <p className="text-[13px] font-semibold text-[var(--ink)]">{space?.name ?? "—"}</p>
+            <p className="text-[11px] text-[var(--ink-4)] mt-0.5">{project?.name}</p>
+            {selectedUseCase && (
+              <p className="mt-1.5 text-[11px] font-mono tracking-wider uppercase text-[var(--ink-4)]">
+                {selectedUseCase.replace(/_/g, " ")}
+              </p>
+            )}
+            {contextTotal > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {topics.length > 0 && <span className="chat-toolbar-pill-subtle">{topics.length} topics</span>}
+                {tickets.length > 0 && <span className="chat-toolbar-pill-subtle">{tickets.length} tickets</span>}
+                {documents.length > 0 && <span className="chat-toolbar-pill-subtle">{documents.length} docs</span>}
+              </div>
+            )}
+          </div>
+
+          {lastAssistantDetail?.sources_used?.length ? (
+            <div className="chat-context-section">
+              <span className="chat-context-eyebrow">Sources · dernier message</span>
+              <div className="flex flex-col gap-1.5 mt-1">
+                {lastAssistantDetail.sources_used.map((src) => (
+                  <div key={src.doc_id} className="flex items-start gap-1.5">
+                    <span className="mt-1 w-1.5 h-1.5 rounded-full bg-[var(--accent)] flex-shrink-0" />
+                    <span className="text-[12px] text-[var(--ink-2)] leading-snug">{src.title}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {lastAssistantDetail?.actions?.length ? (
+            <div className="chat-context-section">
+              <span className="chat-context-eyebrow">Actions proposées</span>
+              <div className="flex flex-col gap-1.5 mt-1">
+                {lastAssistantDetail.actions.map((action) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    className="chat-context-action-item"
+                    onClick={() => handleActionClick(action)}
+                  >
+                    <p className="text-[12px] font-semibold text-[var(--ink)] leading-snug">{action.label}</p>
+                    <p className="text-[10.5px] text-[var(--ink-4)] mt-0.5">{action.type.replace(/_/g, " ")}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {!lastAssistantDetail && (
+            <div className="text-[11.5px] text-[var(--ink-5)] leading-relaxed">
+              Le contexte de la dernière réponse apparaîtra ici — sources, preuves et actions.
+            </div>
+          )}
+        </aside>
 
         {debugMode ? (
           <ChatDebugPanel
             payloadMeasure={payloadMeasure}
             openDurationMs={openDurationMs}
             initialRenderMs={initialRenderMs}
-            createDurationMs={createDurationMs}
+            createDurationMs={null}
             sendDurationMs={sendDurationMs}
             assistantRenderMs={assistantRenderMs}
             threadStateLabel={threadStateLabel}

@@ -8,6 +8,7 @@ import {
   ListTodo,
   LogOut,
   Map,
+  MessageSquareText,
   Plus,
   Rows3,
   Search,
@@ -19,6 +20,7 @@ import { useProjects } from "../../hooks/use-projects";
 import { useSpaces } from "../../hooks/use-spaces";
 import {
   projectPath,
+  spaceChatPath,
   resolveEntityBySlug,
   spaceDocumentsPath,
   spaceOverviewPath,
@@ -320,6 +322,12 @@ export function Sidebar({
                                     label="Documents"
                                     active={location.pathname.endsWith("/documents")}
                                   />
+                                  <SbSubLink
+                                    to={spaceChatPath(activeProjectRef, activeSpaceRef)}
+                                    icon={MessageSquareText}
+                                    label="Let's Chat"
+                                    active={location.pathname.endsWith("/chat")}
+                                  />
                                 </div>
                               ) : null}
                             </div>
@@ -340,6 +348,15 @@ export function Sidebar({
               </div>
               <div className="space-y-1">
                 <SbNavItem to={favoriteDocumentsLink} icon={FileText} label="Documents" collapsed={false} end={false} />
+                {activeSpace ? (
+                  <SbNavItem
+                    to={spaceChatPath(projectRef, spaceRef)}
+                    icon={MessageSquareText}
+                    label="Let's Chat"
+                    collapsed={false}
+                    end={false}
+                  />
+                ) : null}
                 <SbNavItem to={favoriteKanbanLink} icon={FolderKanban} label="Projet Actif" collapsed={false} end={false} />
               </div>
             </div>

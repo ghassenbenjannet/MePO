@@ -106,6 +106,8 @@ def run_compat_migrations() -> None:
                 connection.execute(text("ALTER TABLE documents ADD COLUMN doc_metadata JSON NOT NULL DEFAULT '{}'"))
             if "icon" not in doc_columns:
                 connection.execute(text("ALTER TABLE documents ADD COLUMN icon VARCHAR(50)"))
+            if "ai_enabled" not in doc_columns:
+                connection.execute(text("ALTER TABLE documents ADD COLUMN ai_enabled BOOLEAN NOT NULL DEFAULT TRUE"))
             if "is_archived" not in doc_columns:
                 connection.execute(text("ALTER TABLE documents ADD COLUMN is_archived BOOLEAN NOT NULL DEFAULT FALSE"))
 
@@ -193,12 +195,48 @@ def run_compat_migrations() -> None:
                 connection.execute(text("UPDATE project_skills SET updated_at = created_at WHERE updated_at IS NULL"))
 
         if "project_skill_versions" in inspector.get_table_names():
-            version_columns = {column["name"] for column in inspector.get_columns("project_skill_versions")}
+            version_columns_info = inspector.get_columns("project_skill_versions")
+            version_columns = {col["name"] for col in version_columns_info}
             if "version_label" not in version_columns:
                 connection.execute(text("ALTER TABLE project_skill_versions ADD COLUMN version_label VARCHAR(50) NOT NULL DEFAULT 'v1'"))
+            if "project_id" not in version_columns:
+                connection.execute(text("ALTER TABLE project_skill_versions ADD COLUMN project_id VARCHAR(36)"))
+            if "editor_payload_json" not in version_columns:
+                connection.execute(text("ALTER TABLE project_skill_versions ADD COLUMN editor_payload_json JSON NOT NULL DEFAULT '{}'"))
+            if "compiled_context_text" not in version_columns:
+                connection.execute(text("ALTER TABLE project_skill_versions ADD COLUMN compiled_context_text TEXT NOT NULL DEFAULT ''"))
             if "compiled_runtime_text" not in version_columns:
                 connection.execute(text("ALTER TABLE project_skill_versions ADD COLUMN compiled_runtime_text TEXT NOT NULL DEFAULT ''"))
             if "source_kind" not in version_columns:
                 connection.execute(text(
-                    "ALTER TABLE project_skill_versions ADD COLUMN source_kind VARCHAR(80) NOT NULL DEFAULT 'legacy_project_skill_settings'"
+                    "ALTER TABLE project_skill_versions ADD COLUMN source_kind VARCHAR(80) NOT NULL DEFAULT 'mepo_skill_editor'"
                 ))
+            for col in version_columns_info:
+                if col["name"] == "skill_id" and not col.get("nullable", True):
+                    connection.execute(text("ALTER TABLE project_skill_versions ALTER COLUMN skill_id DROP NOT NULL"))
+                    break
+            connection.execute(text(
+                "UPDATE project_skill_versions SET source_kind = 'mepo_skill_editor' "
+                "WHERE source_kind IS NULL OR source_kind = '' OR source_kind = 'legacy_project_skill_settings' OR source_kind = 'project_skill_settings'"
+            ))
+
+        if "ai_conversations" in inspector.get_table_names():
+            conv_columns = {column["name"] for column in inspector.get_columns("ai_conversations")}
+            if "active_use_case" not in conv_columns:
+                connection.execute(text("ALTER TABLE ai_conversations ADD COLUMN active_use_case VARCHAR(50)"))
+            if "last_use_case_snapshot_id" not in conv_columns:
+                connection.execute(text("ALTER TABLE ai_conversations ADD COLUMN last_use_case_snapshot_id VARCHAR(36)"))
+
+        if "ai_messages" in inspector.get_table_names():
+            msg_columns = {column["name"] for column in inspector.get_columns("ai_messages")}
+            if "use_case" not in msg_columns:
+                connection.execute(text("ALTER TABLE ai_messages ADD COLUMN use_case VARCHAR(50)"))
+            if "turn_classification" not in msg_columns:
+                connection.execute(text("ALTER TABLE ai_messages ADD COLUMN turn_classification VARCHAR(30)"))
+            if "use_case_snapshot_id" not in msg_columns:
+                connection.execute(text("ALTER TABLE ai_messages ADD COLUMN use_case_snapshot_id VARCHAR(36)"))
+
+        if "document_google_links" in inspector.get_table_names():
+            link_columns = {column["name"] for column in inspector.get_columns("document_google_links")}
+            if "document_id" not in link_columns and "knowledge_document_id" in link_columns:
+                connection.execute(text("ALTER TABLE document_google_links ADD COLUMN document_id VARCHAR(36)"))

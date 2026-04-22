@@ -62,8 +62,8 @@ def create_access_token(subject: str, remember_me: bool = False) -> tuple[str, i
 def build_demo_user() -> UserRead:
     return UserRead(
         id=_DEMO_USER_ID,
-        email="meryem.ghass@example.com",
-        full_name="Meryem Ghass",
+        email="ghassenbenjannet1@gmail.com",
+        full_name="Gass ben-Jannet",
         preferred_language="fr",
         preferred_theme="light",
         ai_preferences=get_demo_user_prefs(),

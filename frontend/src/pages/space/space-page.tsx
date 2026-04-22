@@ -39,6 +39,7 @@ import {
   topicPath,
 } from "../../lib/routes";
 import { cn } from "../../lib/utils";
+import { useUiStore } from "../../stores/ui-store";
 import type { Document, Ticket, Topic } from "../../types/domain";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -813,9 +814,20 @@ function OverviewSubTab({
 
 // ─── Sub-tab: Topics ──────────────────────────────────────────────────────────
 
-function TopicsSubTab({ spaceId, spaceName, projectId, projectName, topics, tickets }: { spaceId: string; spaceName: string; projectId: string; projectName: string; topics: Topic[]; tickets: Ticket[] }) {
+function TopicsSubTab({ spaceId, spaceName, projectId, projectName, topics, tickets, autoOpen, returnTo }: { spaceId: string; spaceName: string; projectId: string; projectName: string; topics: Topic[]; tickets: Ticket[]; autoOpen?: boolean; returnTo?: string | null }) {
+  const navigate = useNavigate();
   const [showTopicModal, setShowTopicModal] = useState(false);
   const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
+
+  useEffect(() => {
+    if (autoOpen) { setEditingTopic(null); setShowTopicModal(true); }
+  }, [autoOpen]);
+
+  function handleTopicModalClose() {
+    setShowTopicModal(false);
+    setEditingTopic(null);
+    if (returnTo) navigate(decodeURIComponent(returnTo));
+  }
 
   const ticketCountByTopic = useMemo(() => {
     const map: Record<string, number> = {};
@@ -825,7 +837,7 @@ function TopicsSubTab({ spaceId, spaceName, projectId, projectName, topics, tick
 
   return (
     <div>
-      {showTopicModal && <TopicModal spaceId={spaceId} topic={editingTopic ?? undefined} onClose={() => { setShowTopicModal(false); setEditingTopic(null); }} />}
+      {showTopicModal && <TopicModal spaceId={spaceId} topic={editingTopic ?? undefined} onClose={handleTopicModalClose} />}
 
       <div className="mb-4 flex items-center justify-between">
         <div>
@@ -1084,6 +1096,7 @@ function KanbanSubTab({
   loadingTickets,
   ticketsError,
   onRetryTickets,
+  autoOpen,
 }: {
   topics: Topic[];
   tickets: Ticket[];
@@ -1091,11 +1104,25 @@ function KanbanSubTab({
   loadingTickets: boolean;
   ticketsError?: string | null;
   onRetryTickets?: () => void;
+  autoOpen?: boolean;
+  returnTo?: string | null;
 }) {
+  const navigate = useNavigate();
   const { mutateAsync: updateTicket } = useUpdateTicket();
   const [showTicketModal, setShowTicketModal] = useState(false);
   const [editingTicket, setEditingTicket] = useState<Ticket | null>(null);
   const [createDefaults, setCreateDefaults] = useState<{ topicId?: string; status?: string }>({});
+
+  useEffect(() => {
+    if (autoOpen) { setEditingTicket(null); setCreateDefaults({}); setShowTicketModal(true); }
+  }, [autoOpen]);
+
+  function handleTicketModalClose() {
+    setShowTicketModal(false);
+    setEditingTicket(null);
+    setCreateDefaults({});
+    if (returnTo) navigate(decodeURIComponent(returnTo));
+  }
 
   return (
     <div>
@@ -1106,11 +1133,7 @@ function KanbanSubTab({
           ticket={editingTicket ?? undefined}
           defaultTopicId={createDefaults.topicId ?? topics[0]?.id}
           defaultStatus={createDefaults.status}
-          onClose={() => {
-            setShowTicketModal(false);
-            setEditingTicket(null);
-            setCreateDefaults({});
-          }}
+          onClose={handleTicketModalClose}
         />
       )}
 
@@ -1658,10 +1681,10 @@ function RoadmapSubTab({ topics }: { topics: Topic[] }) {
 // ─── Suivi Tab (container with sub-tabs) ─────────────────────────────────────
 
 function SuiviTab({
-  projectId, projectName, spaceId, spaceName, topics, tickets, documents, loadingTickets, ticketsError, onRetryTickets, subTab, onSetSubTab,
+  projectId, projectName, spaceId, spaceName, topics, tickets, documents, loadingTickets, ticketsError, onRetryTickets, subTab, onSetSubTab, autoOpenCreate, returnTo,
 }: {
   projectId: string; projectName: string; spaceId: string; spaceName: string; topics: Topic[]; tickets: Ticket[]; documents: Document[]; loadingTickets: boolean; ticketsError?: string | null; onRetryTickets?: () => void;
-  subTab: SuiviSubTabId; onSetSubTab: (tab: SuiviSubTabId) => void;
+  subTab: SuiviSubTabId; onSetSubTab: (tab: SuiviSubTabId) => void; autoOpenCreate?: "ticket" | "topic" | null; returnTo?: string | null;
 }) {
   const doneCount = tickets.filter((ticket) => ticket.status === "done").length;
   const explicitBacklogCount = tickets.filter((ticket) => ticket.status === "backlog").length;
@@ -1684,8 +1707,8 @@ function SuiviTab({
 
       {/* Sub-tab content */}
       {subTab === "overview" && <OverviewSubTab projectId={projectId} projectName={projectName} spaceId={spaceId} spaceName={spaceName} topics={topics} tickets={tickets} onNavigate={onSetSubTab} />}
-      {subTab === "topics" && <TopicsSubTab spaceId={spaceId} spaceName={spaceName} projectId={projectId} projectName={projectName} topics={topics} tickets={tickets} />}
-      {subTab === "kanban" && <KanbanSubTab topics={topics} tickets={tickets} documents={documents} loadingTickets={loadingTickets} ticketsError={ticketsError} onRetryTickets={onRetryTickets} />}
+      {subTab === "topics" && <TopicsSubTab spaceId={spaceId} spaceName={spaceName} projectId={projectId} projectName={projectName} topics={topics} tickets={tickets} autoOpen={autoOpenCreate === "topic"} returnTo={returnTo} />}
+      {subTab === "kanban" && <KanbanSubTab topics={topics} tickets={tickets} documents={documents} loadingTickets={loadingTickets} ticketsError={ticketsError} onRetryTickets={onRetryTickets} autoOpen={autoOpenCreate === "ticket"} returnTo={returnTo} />}
       {subTab === "tasks" && <TasksSubTab topics={topics} tickets={tickets} documents={documents} loadingTickets={loadingTickets} />}
       {subTab === "backlog" && <BacklogSubTab topics={topics} tickets={tickets} documents={documents} loadingTickets={loadingTickets} />}
       {subTab === "roadmap" && <RoadmapSubTab topics={topics} />}
@@ -1724,6 +1747,13 @@ export function SpacePage() {
   const spaceRef = { id: spaceId ?? "", name: space?.name ?? spaceSlug ?? "" };
   const requestedSuiviView = searchParams.get("view");
   const suiviSubTab: SuiviSubTabId = isSpaceSuiviView(requestedSuiviView) ? requestedSuiviView : "overview";
+  const createParam = searchParams.get("create") as "ticket" | "topic" | null;
+  const returnToParam = searchParams.get("returnTo");
+  const setSidebarCollapsed = useUiStore((s: { setSidebarCollapsed: (v: boolean) => void }) => s.setSidebarCollapsed);
+
+  useEffect(() => {
+    setSidebarCollapsed(suiviSubTab === "kanban");
+  }, [suiviSubTab, setSidebarCollapsed]);
 
   function setSuiviSubTab(tab: SuiviSubTabId) {
     const nextSearchParams = new URLSearchParams(searchParams);
@@ -1731,6 +1761,14 @@ export function SpacePage() {
     else nextSearchParams.set("view", tab);
     setSearchParams(nextSearchParams, { replace: true });
   }
+
+  useEffect(() => {
+    if (!createParam && !returnToParam) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("create");
+    next.delete("returnTo");
+    setSearchParams(next, { replace: true });
+  }, [createParam, returnToParam, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!projectId || !spaceId) return;
@@ -1945,6 +1983,8 @@ export function SpacePage() {
         onRetryTickets={() => { void refetchTickets(); }}
         subTab={suiviSubTab}
         onSetSubTab={setSuiviSubTab}
+        autoOpenCreate={createParam}
+        returnTo={returnToParam}
       />
     </div>
   );

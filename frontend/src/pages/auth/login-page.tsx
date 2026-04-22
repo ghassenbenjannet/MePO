@@ -14,7 +14,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const login = useAuthStore((s) => s.login);
 
-  const [email, setEmail]           = useState("meryem.ghass@example.com");
+  const [email, setEmail]           = useState("ghassenbenjannet1@gmail.com");
   const [password, setPassword]     = useState("ShadowPO123");
   const [rememberMe, setRememberMe] = useState(false);
   const [showPw, setShowPw]         = useState(false);
@@ -172,7 +172,7 @@ export function LoginPage() {
           <div className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3">
             <p className="text-[11px] text-[var(--text-muted)]">
               <span className="font-semibold text-[var(--text-strong)]">Démo :</span>{" "}
-              <span className="font-mono text-brand-600">meryem.ghass@example.com</span>{" "}
+              <span className="font-mono text-brand-600">ghassenbenjannet1@gmail.com</span>{" "}
               /{" "}
               <span className="font-mono text-brand-600">ShadowPO123</span>
             </p>

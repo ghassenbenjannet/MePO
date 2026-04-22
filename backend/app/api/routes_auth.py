@@ -9,7 +9,7 @@ router = APIRouter()
 
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest) -> TokenResponse:
-    if payload.email != "meryem.ghass@example.com" or payload.password != "ShadowPO123":
+    if payload.email != "ghassenbenjannet1@gmail.com" or payload.password != "ShadowPO123":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Identifiants invalides.")
 
     token, expires_in = create_access_token("user-1", remember_me=payload.remember_me)

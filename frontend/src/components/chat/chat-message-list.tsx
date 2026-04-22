@@ -1,7 +1,12 @@
 import { memo, useCallback, useMemo, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { Check, ChevronDown, Clock3, Copy, Loader2, RefreshCcw, Sparkles } from "lucide-react";
-import type { ChatNodeMessageDetail, ChatNodeMessagePreview, ChatNodeProposedActionCard } from "../../hooks/use-chat-node";
+import type {
+  ChatMessageDetail,
+  ChatMessagePreview,
+  ChatProposedActionCard,
+  ChatSourceUsed,
+} from "../../hooks/use-chat-conversations";
 import { Button } from "../ui/button";
 import { RowSkeleton } from "../ui/skeleton";
 import { cn } from "../../lib/utils";
@@ -9,8 +14,8 @@ import { ChatMarkdown } from "./chat-markdown";
 import type { ChatStarterPrompt, ChatThreadState } from "./chat-ui-types";
 
 type ChatMessageListProps = {
-  messages: ChatNodeMessagePreview[];
-  messageDetails: Record<string, ChatNodeMessageDetail>;
+  messages: ChatMessagePreview[];
+  messageDetails: Record<string, ChatMessageDetail>;
   loadingMessageIds: Set<string>;
   threadState: ChatThreadState | null;
   isLoadingThread: boolean;
@@ -20,22 +25,23 @@ type ChatMessageListProps = {
   onRetryThread: () => void;
   onOpenMessageDetail: (id: string) => void;
   onLoadMore: () => void;
+  onActionClick?: (action: ChatProposedActionCard) => void;
   starterPrompts: ChatStarterPrompt[];
   onUseStarterPrompt: (prompt: string) => void;
   scrollRef: RefObject<HTMLDivElement>;
   bottomRef: RefObject<HTMLDivElement>;
 };
 
-function buildBody(message: ChatNodeMessagePreview, detail?: ChatNodeMessageDetail) {
+function buildBody(message: ChatMessagePreview, detail?: ChatMessageDetail) {
   if (!detail) return message.preview_text;
   return message.role === "assistant" ? (detail.rendered_answer ?? detail.full_text) : detail.full_text;
 }
 
-function buildCopyValue(message: ChatNodeMessagePreview, detail?: ChatNodeMessageDetail) {
+function buildCopyValue(message: ChatMessagePreview, detail?: ChatMessageDetail) {
   return detail?.full_text || detail?.rendered_answer || message.preview_text;
 }
 
-function buildAssistantSummary(detail?: ChatNodeMessageDetail) {
+function buildAssistantSummary(detail?: ChatMessageDetail) {
   if (!detail) return null;
   const parts = [
     detail.related_objects.length > 0 ? `${detail.related_objects.length} référence${detail.related_objects.length > 1 ? "s" : ""}` : null,
@@ -68,16 +74,42 @@ function MessageUtilityButton({
   );
 }
 
-const ActionBadge = memo(function ActionBadge({ action }: { action: ChatNodeProposedActionCard }) {
+const ACTION_TYPE_LABELS: Record<string, string> = {
+  create_ticket: "Créer un ticket",
+  create_topic: "Créer un topic",
+  create_document: "Créer un document",
+  add_comment: "Ajouter un commentaire",
+};
+
+const ActionBadge = memo(function ActionBadge({
+  action,
+  onClick,
+}: {
+  action: ChatProposedActionCard;
+  onClick?: (action: ChatProposedActionCard) => void;
+}) {
+  const typeLabel = ACTION_TYPE_LABELS[action.type] ?? action.type;
   return (
-    <div className="chat-action-card">
-      <p className="text-xs font-semibold text-[var(--text-strong)]">{action.label}</p>
-      <p className="mt-1 text-[11px] text-[var(--text-muted)]">
-        {action.type}
-        {action.target_label ? ` · ${action.target_label}` : ""}
-        {action.requires_confirmation ? " · confirmation" : ""}
-      </p>
-    </div>
+    <button
+      type="button"
+      className="chat-action-card w-full text-left transition hover:border-[var(--accent)] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      onClick={() => onClick?.(action)}
+    >
+      <p className="text-[13px] font-semibold leading-snug text-[var(--text-strong)]">{action.label}</p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="inline-flex items-center rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--accent-deep)]">
+          {typeLabel}
+        </span>
+        {action.target_label && (
+          <span className="text-[11px] text-[var(--text-muted)]">{action.target_label}</span>
+        )}
+        {action.requires_confirmation && (
+          <span className="inline-flex items-center rounded-full border border-[var(--border)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
+            confirmation requise
+          </span>
+        )}
+      </div>
+    </button>
   );
 });
 
@@ -91,16 +123,64 @@ function RelatedObjectCard({ item }: { item: { kind: string; id: string; label: 
   );
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  regle_metier: "règle métier",
+  preuve_technique: "preuve tech.",
+  validation: "validation",
+  contradiction: "contradiction",
+  reference: "référence",
+};
+
+const ROLE_COLORS: Record<string, string> = {
+  regle_metier: "bg-blue-400",
+  preuve_technique: "bg-violet-400",
+  validation: "bg-emerald-400",
+  contradiction: "bg-red-400",
+  reference: "bg-[var(--text-muted)]",
+};
+
+const EVIDENCE_LABELS: Record<string, { label: string; color: string }> = {
+  strong:   { label: "Preuves solides",     color: "text-emerald-600" },
+  moderate: { label: "Preuves partielles",  color: "text-amber-600" },
+  weak:     { label: "Preuves faibles",     color: "text-orange-500" },
+  none:     { label: "Sans preuve doc.",    color: "text-red-500" },
+};
+
+
+function SourceUsedChip({ source }: { source: ChatSourceUsed }) {
+  const dotColor = ROLE_COLORS[source.role] ?? ROLE_COLORS.reference;
+  const roleLabel = ROLE_LABELS[source.role] ?? source.role;
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-panel-2)] px-2.5 py-1 text-[11px]">
+      <span className={cn("h-1.5 w-1.5 rounded-full flex-shrink-0", dotColor)} />
+      <span className="truncate max-w-[180px] font-medium text-[var(--text-strong)]">{source.title}</span>
+      <span className="text-[10px] text-[var(--text-muted)]">· {roleLabel}</span>
+    </span>
+  );
+}
+
+function EvidenceBadge({ level }: { level: string }) {
+  const info = EVIDENCE_LABELS[level];
+  if (!info) return null;
+  return (
+    <span className={cn("text-[11px] font-medium", info.color)}>
+      {info.label}
+    </span>
+  );
+}
+
 const ThreadMessageCard = memo(function ThreadMessageCard({
   message,
   detail,
   loading,
   onOpen,
+  onActionClick,
 }: {
-  message: ChatNodeMessagePreview;
-  detail?: ChatNodeMessageDetail;
+  message: ChatMessagePreview;
+  detail?: ChatMessageDetail;
   loading: boolean;
   onOpen: (id: string) => void;
+  onActionClick?: (action: ChatProposedActionCard) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const isAssistant = message.role === "assistant";
@@ -117,40 +197,46 @@ const ThreadMessageCard = memo(function ThreadMessageCard({
     }
   }, [detail, message]);
 
+  const timeLabel = new Date(message.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
   return (
     <article
       className={cn(
         "chat-message-row",
         isAssistant ? "chat-message-row-assistant" : "chat-message-row-user",
       )}
-      style={{ contentVisibility: "auto", containIntrinsicSize: isAssistant ? "520px" : "220px" }}
+      style={{ contentVisibility: "auto", containIntrinsicSize: isAssistant ? "520px" : "180px" }}
     >
-      <div className={cn("chat-bubble", isAssistant ? "chat-bubble-assistant" : "chat-bubble-user")}>
-        <div className="chat-message-head">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className={cn("chat-avatar", isAssistant ? "chat-avatar-assistant" : "chat-avatar-user")}>
-              {isAssistant ? "AI" : "VOUS"}
-            </span>
-            <div className="min-w-0">
-              <p className={cn("truncate text-sm font-semibold", isAssistant ? "text-[var(--text-strong)]" : "text-white")}>
-                {isAssistant ? "Assistant Shadow" : "Vous"}
-              </p>
-              <p className={cn("text-[11px]", isAssistant ? "text-[var(--text-muted)]" : "text-white/80")}>
-                {new Date(message.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-              </p>
-            </div>
-          </div>
+      {/* Avatar */}
+      <span className={cn("chat-avatar mt-0.5", isAssistant ? "chat-avatar-assistant" : "chat-avatar-user")}>
+        {isAssistant ? "AI" : "V"}
+      </span>
 
-          <div className="flex flex-wrap items-center gap-2">
+      {/* Content */}
+      <div className="chat-bubble min-w-0 flex-1">
+        {/* Row header */}
+        <div className="chat-message-head">
+          <div className="flex items-baseline gap-2">
+            <span className="text-[13px] font-semibold text-[var(--ink)]">
+              {isAssistant ? "MePO" : "Vous"}
+            </span>
+            {isAssistant && (
+              <span className="text-[10.5px] font-mono text-[var(--ink-4)] tracking-wider uppercase">
+                · assistant
+              </span>
+            )}
+            <span className="text-[10.5px] font-mono text-[var(--ink-5)]">{timeLabel}</span>
+          </div>
+          <div className="flex items-center gap-1">
             <MessageUtilityButton
               label={copied ? "Copié" : "Copier"}
-              icon={copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              icon={copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
               onClick={() => void handleCopy()}
             />
             {(message.is_truncated || (message.has_detail && !detail)) ? (
               <MessageUtilityButton
-                label={loading ? "Chargement..." : "Déplier"}
-                icon={loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                label={loading ? "..." : "Déplier"}
+                icon={loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ChevronDown className="h-3 w-3" />}
                 onClick={() => onOpen(message.id)}
                 disabled={loading}
               />
@@ -158,31 +244,66 @@ const ThreadMessageCard = memo(function ThreadMessageCard({
           </div>
         </div>
 
+        {/* Body */}
         {isAssistant ? (
-          <div className="mt-4 space-y-4">
-            <div className="chat-response-section chat-response-section-intro">
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <span className="chat-section-chip">Synthèse</span>
-                <p className="text-xs text-[var(--text-muted)]">
-                  {assistantSummary ?? "Réponse structurée à partir du contexte disponible."}
-                </p>
-              </div>
-              <ChatMarkdown content={body} />
+          <div className="chat-ai-card">
+            <div className="mb-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-mono tracking-widest uppercase text-[rgba(252,252,251,0.5)]">
+                MePO · synthèse
+              </span>
+              {assistantSummary && (
+                <span className="text-[10.5px] text-[rgba(252,252,251,0.45)]">· {assistantSummary}</span>
+              )}
             </div>
+            <ChatMarkdown content={body} />
+
+            {detail?.warning_no_docs ? (
+              <div className="mt-3 flex items-start gap-1.5 rounded-lg border border-amber-400/30 bg-amber-400/10 px-2.5 py-2">
+                <span className="text-amber-300 text-[11px]">⚠</span>
+                <p className="text-[11px] text-amber-200">{detail.warning_no_docs}</p>
+              </div>
+            ) : null}
+
+            {detail && (detail.retrieved_docs_count > 0 || detail.corpus_status) ? (
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                <span className="chat-section-chip">Corpus</span>
+                <span className="text-[11px] text-[rgba(252,252,251,0.5)]">
+                  {detail.retrieved_docs_count > 0
+                    ? `${detail.retrieved_docs_count} doc${detail.retrieved_docs_count > 1 ? "s" : ""} chargé${detail.retrieved_docs_count > 1 ? "s" : ""}`
+                    : "Aucun doc chargé"}
+                </span>
+                {detail.retained_docs_count > 0 && (
+                  <span className="text-[11px] text-emerald-400">
+                    · {detail.retained_docs_count} cité{detail.retained_docs_count > 1 ? "s" : ""}
+                  </span>
+                )}
+                <EvidenceBadge level={detail.evidence_level ?? "none"} />
+              </div>
+            ) : null}
           </div>
         ) : (
-          <div className="mt-4 text-white">
+          <div className="mt-1">
             <div className="chat-user-message-body">{body}</div>
           </div>
         )}
 
-        {detail?.related_objects.length ? (
-          <div className="mt-5 space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="chat-section-chip">Références</span>
-              <p className="text-xs text-[var(--text-muted)]">Objets reliés à cette réponse</p>
+        {/* Sources */}
+        {detail?.sources_used?.length ? (
+          <div className="mt-2.5 space-y-1.5">
+            <span className="chat-section-chip">Sources</span>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {detail.sources_used.map((src) => (
+                <SourceUsedChip key={src.doc_id} source={src} />
+              ))}
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          </div>
+        ) : null}
+
+        {/* Related objects */}
+        {detail?.related_objects.length ? (
+          <div className="mt-3 space-y-2">
+            <span className="chat-section-chip">Références</span>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3 mt-1">
               {detail.related_objects.map((item) => (
                 <RelatedObjectCard key={`${item.kind}-${item.id}`} item={item} />
               ))}
@@ -190,15 +311,13 @@ const ThreadMessageCard = memo(function ThreadMessageCard({
           </div>
         ) : null}
 
+        {/* Actions */}
         {detail?.actions.length ? (
-          <div className="mt-5 space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="chat-section-chip">Actions</span>
-              <p className="text-xs text-[var(--text-muted)]">Pistes proposées pour aller plus vite.</p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+          <div className="mt-3 space-y-2">
+            <span className="chat-section-chip">Actions proposées</span>
+            <div className="grid gap-2 sm:grid-cols-2 mt-1">
               {detail.actions.map((action) => (
-                <ActionBadge key={action.id} action={action} />
+                <ActionBadge key={action.id} action={action} onClick={onActionClick} />
               ))}
             </div>
           </div>
@@ -280,6 +399,7 @@ export function ChatMessageList({
   onRetryThread,
   onOpenMessageDetail,
   onLoadMore,
+  onActionClick,
   starterPrompts,
   onUseStarterPrompt,
   scrollRef,
@@ -335,6 +455,7 @@ export function ChatMessageList({
             detail={messageDetails[message.id]}
             loading={loadingMessageIds.has(message.id)}
             onOpen={onOpenMessageDetail}
+            onActionClick={onActionClick}
           />
         ))}
 

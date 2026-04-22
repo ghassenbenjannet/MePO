@@ -2,6 +2,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { Document, DocumentCreate, DocType } from "../types/domain";
 
+export interface ProjectDocumentsSyncStatus {
+  project_id: string;
+  google_sync_status: string;
+  corpus_status: string;
+  active_corpus_version: string | null;
+  last_sync_started_at: string | null;
+  last_sync_finished_at: string | null;
+  last_error: string | null;
+  synced_documents: number;
+  eligible_documents: number;
+}
+
 export function useDocuments(opts: { spaceId?: string; topicId?: string; parentId?: string | null; type?: DocType } = {}) {
   const { spaceId, topicId, parentId, type } = opts;
   const params = new URLSearchParams();
@@ -25,30 +37,68 @@ export function useDocument(id: string | null) {
   });
 }
 
+export function useProjectDocumentsSyncStatus(projectId: string | undefined) {
+  return useQuery<ProjectDocumentsSyncStatus>({
+    queryKey: ["documents-sync", projectId],
+    queryFn: () => api.get<ProjectDocumentsSyncStatus>(`/api/projects/${projectId}/documents/sync-status`),
+    enabled: !!projectId,
+  });
+}
+
 export function useCreateDocument() {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: DocumentCreate) => api.post<Document>("/api/documents", data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["documents"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["documents"] }),
   });
 }
 
 export function useUpdateDocument() {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...data }: Partial<Document> & { id: string }) =>
       api.patch<Document>(`/api/documents/${id}`, data),
-    onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ["documents"] });
-      qc.invalidateQueries({ queryKey: ["document", vars.id] });
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+      queryClient.invalidateQueries({ queryKey: ["document", variables.id] });
+      queryClient.invalidateQueries({ queryKey: ["documents-sync"] });
     },
   });
 }
 
 export function useDeleteDocument() {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.delete(`/api/documents/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["documents"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+      queryClient.invalidateQueries({ queryKey: ["documents-sync"] });
+    },
+  });
+}
+
+export function useSyncProjectDocuments(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<ProjectDocumentsSyncStatus>(`/api/projects/${projectId}/documents/sync`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+      queryClient.invalidateQueries({ queryKey: ["documents-sync", projectId] });
+    },
+  });
+}
+
+export function useSyncDocument(projectId: string | undefined) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (documentId: string) => api.post<Document>(`/api/documents/${documentId}/sync`, {}),
+    onSuccess: (document) => {
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+      queryClient.invalidateQueries({ queryKey: ["document", document.id] });
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ["documents-sync", projectId] });
+      }
+    },
   });
 }

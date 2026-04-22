@@ -5,14 +5,14 @@ export function ProjectHero({
   title,
   description,
   spacesCount,
-  knowledgeCount,
+  aiContextCount,
   favoriteSpacesCount,
   actions,
 }: {
   title: string;
   description?: string;
   spacesCount: number;
-  knowledgeCount: number;
+  aiContextCount: number;
   favoriteSpacesCount: number;
   actions?: ReactNode;
 }) {
@@ -20,16 +20,15 @@ export function ProjectHero({
     <PageHero
       eyebrow="Projet"
       title={title}
-      description={description || "Consultez les espaces, la base de connaissance et les réglages du projet."}
+      description={description || "Consultez les espaces et la configuration IA du projet."}
       meta={(
         <>
           <span className="badge badge-brand">{spacesCount} espaces</span>
           <span className="badge badge-neutral">{favoriteSpacesCount} favoris</span>
-          <span className="badge badge-neutral">{knowledgeCount} éléments knowledge</span>
+          <span className="badge badge-neutral">{aiContextCount} contexte IA</span>
         </>
       )}
       actions={actions}
     />
   );
 }
-

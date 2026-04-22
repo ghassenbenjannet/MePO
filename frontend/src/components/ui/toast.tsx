@@ -30,6 +30,12 @@ const CONFIG = {
     icon_cls: "text-brand-500",
     bg: "bg-[var(--bg-panel)] border-brand-100",
   },
+  action: {
+    icon: CheckCircle2,
+    bar: "bg-brand-500",
+    icon_cls: "text-brand-500",
+    bg: "bg-[var(--bg-panel)] border-brand-100",
+  },
 } as const;
 
 function ToastItem({ toast }: { toast: Toast }) {

@@ -37,9 +37,12 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://shadow:shadow@postgres:5432/shadow_po_ai
       REDIS_URL: redis://redis:6379/0
-      OPENAI_MODEL: ${OPENAI_MODEL}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       SHADOW_RUNTIME_MODE: ${SHADOW_RUNTIME_MODE:-mepo}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      AI_PROVIDER: ${AI_PROVIDER:-google}
+      AI_GOOGLE_DEFAULT_MODEL: ${AI_GOOGLE_DEFAULT_MODEL:-gemini-2.5-flash}
     ports:
       - "8000:8000"
     depends_on:

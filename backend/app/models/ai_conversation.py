@@ -16,6 +16,9 @@ class AIConversation(Base):
     topic_id: Mapped[str | None] = mapped_column(ForeignKey("topics.id"), nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     skill_version_id_snapshot: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    active_use_case: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    last_use_case_snapshot_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # Colonnes OpenAI conservées temporairement pour rétrocompatibilité lecture — supprimées en T5
     openai_conversation_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     openai_response_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     summary_memory: Mapped[str | None] = mapped_column(String(4000), nullable=True)
