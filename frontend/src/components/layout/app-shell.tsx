@@ -135,6 +135,8 @@ export function AppShell() {
   useKeyDown("k", () => setCmdOpen(true), { ctrl: true });
   useKeyDown("k", () => setCmdOpen(true), { meta: true });
 
+  const isFullBleed = location.pathname.endsWith("/chat") || location.pathname.endsWith("/documents");
+
   return (
     <div className="flex min-h-screen bg-[var(--bg-body)] text-[var(--text)]">
       <Sidebar onOpenCommandPalette={() => setCmdOpen(true)} />
@@ -145,10 +147,14 @@ export function AppShell() {
           onToggleDesignTweaks={() => setDesignTweaksOpen((current) => !current)}
         />
 
-        <main className="min-h-0 flex-1 bg-[var(--bg-body)]">
-          <div className="w-full px-6 pb-8 pt-6 xl:px-10 xl:pb-10 xl:pt-8">
+        <main className="min-h-0 flex-1 bg-[var(--bg-body)] flex flex-col overflow-hidden">
+          {isFullBleed ? (
             <Outlet />
-          </div>
+          ) : (
+            <div className="w-full px-6 pb-8 pt-6 xl:px-10 xl:pb-10 xl:pt-8">
+              <Outlet />
+            </div>
+          )}
         </main>
       </div>
 

@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  AlertCircle, AlertTriangle, ArrowLeft, CheckCircle, CheckCircle2, ChevronDown, ChevronRight,
+  AlertCircle, AlertTriangle, ArrowLeft, CheckCircle, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
   Clock, FileText, Folder, FolderOpen, Grid2x2, Layers, List,
   Loader2, MoreHorizontal, Pencil, Plus, Search, Trash2, XCircle,
   GitBranch, Share2,
 } from "lucide-react";
-import { useCreateDocument, useDeleteDocument, useDocuments, useUpdateDocument } from "../../hooks/use-documents";
+import {
+  useCreateDocument,
+  useDeleteDocument,
+  useDocuments,
+  useProjectDocumentsSyncStatus,
+  useSyncDocument,
+  useSyncProjectDocuments,
+  useUpdateDocument,
+} from "../../hooks/use-documents";
 import { cn } from "../../lib/utils";
 import type { Document, DocType, Topic } from "../../types/domain";
 import { DocumentCard } from "./document-card";
@@ -809,6 +817,7 @@ function DocumentContextPanel({ doc, topics }: { doc: Document; topics: Topic[] 
 }
 
 interface DocumentsTabProps {
+  projectId?: string;
   spaceId: string;
   topics: Topic[];
 }
@@ -955,7 +964,7 @@ function DocumentsHubSidebar({ docs, selectedId, onSelect }: { docs: Document[];
   const whiteboardCount = navDocs.filter((doc) => doc.type === "whiteboard").length;
 
   return (
-    <aside className="hidden w-[260px] min-w-[260px] flex-col border-r border-[var(--rule)] bg-[var(--paper)] px-5 py-6 md:flex">
+    <aside className="hidden w-[260px] min-w-[260px] flex-col border-r border-[var(--rule)] bg-[var(--paper)] px-5 py-6 md:flex overflow-y-auto">
       <div>
         <p className="eyebrow">Knowledge hub</p>
         <div className="mt-3 flex flex-col gap-px">
@@ -997,7 +1006,7 @@ function DocumentPageSidebar({ docs, selectedDoc, onOpenDocuments, onSelect }: {
   const navDocs = docs.filter((doc) => doc.type !== "folder" && !doc.is_archived).slice(0, 8);
 
   return (
-    <aside className="hidden w-[260px] min-w-[260px] flex-col border-r border-[var(--rule)] bg-[var(--paper)] px-5 py-6 md:flex">
+    <aside className="hidden w-[260px] min-w-[260px] flex-col border-r border-[var(--rule)] bg-[var(--paper)] px-5 py-6 md:flex overflow-y-auto">
       <button type="button" onClick={onOpenDocuments} className="btn ghost w-fit px-0 text-[12px] text-[var(--ink-4)] hover:bg-transparent">← Documents</button>
       <div className="mt-4">
         <p className="eyebrow">Dans cet espace</p>
@@ -1248,41 +1257,72 @@ function DocumentsHubSidebarV2({
   docs,
   selectedId,
   onSelect,
+  collapsed,
+  onToggleCollapse,
 }: {
   docs: Document[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }) {
   const navDocs = docs.filter((doc) => doc.type !== "folder" && !doc.is_archived).slice(0, 8);
-  const pageCount = navDocs.filter((doc) => doc.type !== "whiteboard" && doc.type !== "mermaid").length;
-  const whiteboardCount = navDocs.filter((doc) => doc.type === "whiteboard").length;
+
+  if (collapsed) {
+    return (
+      <aside className="hidden md:flex flex-col flex-shrink-0 w-[52px] border-r border-[var(--rule)] bg-[var(--paper)] py-3 items-center gap-1 overflow-y-auto">
+        <button type="button" onClick={onToggleCollapse} title="Développer" className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--ink-4)] hover:bg-[var(--paper-2)] hover:text-[var(--ink)] transition mb-2">
+          <ChevronRight className="h-4 w-4" />
+        </button>
+        {navDocs.map((doc) => {
+          const isActive = selectedId === doc.id;
+          return (
+            <button
+              key={doc.id}
+              type="button"
+              title={doc.title}
+              onClick={() => onSelect(doc.id)}
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-[8px] transition",
+                isActive ? "bg-[var(--ink)] text-[var(--paper)]" : "text-[var(--ink-4)] hover:bg-[var(--paper-2)] hover:text-[var(--ink)]",
+              )}
+            >
+              <DocumentListIcon type={doc.type} active={isActive} />
+            </button>
+          );
+        })}
+      </aside>
+    );
+  }
 
   return (
-    <aside className="hidden w-[260px] min-w-[260px] flex-col border-r border-[var(--rule)] bg-[var(--paper)] px-5 py-6 md:flex">
-      <div>
+    <aside className="hidden w-[260px] min-w-[260px] flex-col border-r border-[var(--rule)] bg-[var(--paper)] px-4 py-4 md:flex overflow-y-auto">
+      <div className="flex items-center justify-between mb-3">
         <p className="eyebrow">Knowledge hub</p>
-        <div className="mt-3 flex flex-col gap-px">
-          {navDocs.map((doc) => {
-            const isActive = selectedId === doc.id;
-
-            return (
-              <button
-                key={doc.id}
-                type="button"
-                onClick={() => onSelect(doc.id)}
-                className={cn(
-                  "flex min-h-[34px] items-center gap-3 rounded-[8px] px-3 py-2 text-left text-[13px] transition",
-                  isActive
-                    ? "bg-[var(--ink)] font-semibold text-[var(--paper)]"
-                    : "text-[var(--ink-3)] hover:bg-[var(--paper-2)] hover:text-[var(--ink)]",
-                )}
-              >
-                <DocumentListIcon type={doc.type} active={isActive} />
-                <span className="flex-1 truncate">{doc.title}</span>
-              </button>
-            );
-          })}
-        </div>
+        <button type="button" onClick={onToggleCollapse} title="Réduire" className="flex h-6 w-6 items-center justify-center rounded-[6px] text-[var(--ink-5)] hover:bg-[var(--paper-2)] hover:text-[var(--ink)] transition">
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="flex flex-col gap-px">
+        {navDocs.map((doc) => {
+          const isActive = selectedId === doc.id;
+          return (
+            <button
+              key={doc.id}
+              type="button"
+              onClick={() => onSelect(doc.id)}
+              className={cn(
+                "flex min-h-[34px] items-center gap-3 rounded-[8px] px-3 py-2 text-left text-[13px] transition",
+                isActive
+                  ? "bg-[var(--ink)] font-semibold text-[var(--paper)]"
+                  : "text-[var(--ink-3)] hover:bg-[var(--paper-2)] hover:text-[var(--ink)]",
+              )}
+            >
+              <DocumentListIcon type={doc.type} active={isActive} />
+              <span className="flex-1 truncate">{doc.title}</span>
+            </button>
+          );
+        })}
       </div>
 
       <hr className="rule my-5" />
@@ -1304,28 +1344,65 @@ function DocumentPageSidebarV2({
   selectedDoc,
   onOpenDocuments,
   onSelect,
+  collapsed,
+  onToggleCollapse,
 }: {
   docs: Document[];
   selectedDoc: Document;
   onOpenDocuments: () => void;
   onSelect: (id: string) => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }) {
   const outline = extractOutline(selectedDoc.content);
   const navDocs = docs.filter((doc) => doc.type !== "folder" && !doc.is_archived).slice(0, 8);
 
-  return (
-    <aside className="hidden w-[260px] min-w-[260px] flex-col border-r border-[var(--rule)] bg-[var(--paper)] px-5 py-6 md:flex">
-      <button type="button" onClick={onOpenDocuments} className="btn ghost flex w-fit items-center gap-2 px-0 text-[12px] text-[var(--ink-4)] hover:bg-transparent">
-        <ArrowLeft className="h-3.5 w-3.5" />
-        Documents
-      </button>
+  if (collapsed) {
+    return (
+      <aside className="hidden md:flex flex-col flex-shrink-0 w-[52px] border-r border-[var(--rule)] bg-[var(--paper)] py-3 items-center gap-1 overflow-y-auto">
+        <button type="button" onClick={onToggleCollapse} title="Développer" className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--ink-4)] hover:bg-[var(--paper-2)] hover:text-[var(--ink)] transition mb-1">
+          <ChevronRight className="h-4 w-4" />
+        </button>
+        <button type="button" onClick={onOpenDocuments} title="Retour documents" className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--ink-4)] hover:bg-[var(--paper-2)] hover:text-[var(--ink)] transition mb-2">
+          <ArrowLeft className="h-3.5 w-3.5" />
+        </button>
+        {navDocs.map((doc) => {
+          const isActive = selectedDoc.id === doc.id;
+          return (
+            <button
+              key={doc.id}
+              type="button"
+              title={doc.title}
+              onClick={() => onSelect(doc.id)}
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-[8px] transition",
+                isActive ? "bg-[var(--ink)] text-[var(--paper)]" : "text-[var(--ink-4)] hover:bg-[var(--paper-2)] hover:text-[var(--ink)]",
+              )}
+            >
+              <DocumentListIcon type={doc.type} active={isActive} />
+            </button>
+          );
+        })}
+      </aside>
+    );
+  }
 
-      <div className="mt-4">
+  return (
+    <aside className="hidden w-[260px] min-w-[260px] flex-col border-r border-[var(--rule)] bg-[var(--paper)] px-4 py-4 md:flex overflow-y-auto">
+      <div className="flex items-center justify-between mb-3">
+        <button type="button" onClick={onOpenDocuments} className="flex items-center gap-1.5 text-[12px] text-[var(--ink-4)] hover:text-[var(--ink)] transition">
+          <ArrowLeft className="h-3.5 w-3.5" />Documents
+        </button>
+        <button type="button" onClick={onToggleCollapse} title="Réduire" className="flex h-6 w-6 items-center justify-center rounded-[6px] text-[var(--ink-5)] hover:bg-[var(--paper-2)] hover:text-[var(--ink)] transition">
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div>
         <p className="eyebrow">Dans cet espace</p>
         <div className="mt-3 flex flex-col gap-px">
           {navDocs.map((doc) => {
             const isActive = selectedDoc.id === doc.id;
-
             return (
               <button
                 key={doc.id}
@@ -1730,7 +1807,7 @@ function DocumentsHomeViewV3({
   }
 
   return (
-    <div className="min-h-full overflow-y-auto bg-[var(--paper)] px-8 py-7 lg:px-10 lg:py-8">
+    <div className="h-full overflow-y-auto bg-[var(--paper)] px-8 py-7 lg:px-10 lg:py-8">
       <div className="space-y-10">
         <div className="flex items-start justify-between gap-8 border-b border-[var(--rule)] pb-[18px]">
           <div className="min-w-0">
@@ -2033,10 +2110,13 @@ function DocumentEditorialHeaderV3({
   );
 }
 
-export function DocumentsTab({ spaceId, topics }: DocumentsTabProps) {
+export function DocumentsTab({ projectId, spaceId, topics }: DocumentsTabProps) {
   const { data: docs = [], isLoading } = useDocuments({ spaceId });
+  const { data: syncStatus } = useProjectDocumentsSyncStatus(projectId);
   const { mutateAsync: update } = useUpdateDocument();
   const { mutateAsync: deleteDoc } = useDeleteDocument();
+  const { mutateAsync: syncProjectDocs, isPending: syncingProject } = useSyncProjectDocuments(projectId ?? "");
+  const { mutateAsync: syncDocument, isPending: syncingDocument } = useSyncDocument(projectId);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -2045,6 +2125,7 @@ export function DocumentsTab({ spaceId, topics }: DocumentsTabProps) {
   const [viewMode, setViewMode] = useState<"tree" | "list">("tree");
   const [showCreateRoot, setShowCreateRoot] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "pending" | "saved">("idle");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingContentRef = useRef<{ id: string; content: string } | null>(null);
 
@@ -2122,6 +2203,16 @@ export function DocumentsTab({ spaceId, topics }: DocumentsTabProps) {
     await update({ id: selectedDoc.id, topic_id: topicId });
   }
 
+  async function handleToggleAiEnabled() {
+    if (!selectedDoc) return;
+    await update({ id: selectedDoc.id, ai_enabled: !selectedDoc.ai_enabled });
+  }
+
+  async function handleSyncSelectedDocument() {
+    if (!selectedDoc) return;
+    await syncDocument(selectedDoc.id);
+  }
+
   function handleCreatedDocument(doc: Document) {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     pendingContentRef.current = null;
@@ -2136,7 +2227,55 @@ export function DocumentsTab({ spaceId, topics }: DocumentsTabProps) {
     selectedDoc?.type === "page" || selectedDoc?.type === "note" || selectedDoc?.type === "artifact";
 
   return (
-    <div className="flex min-h-[640px] overflow-visible rounded-[24px] border border-[var(--rule)] bg-[var(--paper)] [font-family:Inter,sans-serif]">
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-[var(--paper)]">
+      {projectId && syncStatus ? (
+        <div className="flex-shrink-0 border-b border-[var(--rule)] bg-[var(--paper)] px-4 py-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-[var(--paper-2)] px-3 py-1 text-xs font-semibold text-[var(--text-strong)]">
+              Google sync: {syncStatus.google_sync_status}
+            </span>
+            <span className="rounded-full bg-[var(--paper-2)] px-3 py-1 text-xs font-semibold text-[var(--text-strong)]">
+              Corpus: {syncStatus.corpus_status}
+            </span>
+            <span className="rounded-full bg-[var(--paper-2)] px-3 py-1 text-xs font-semibold text-[var(--text-strong)]">
+              {syncStatus.synced_documents}/{syncStatus.eligible_documents} documents synchronises
+            </span>
+            <button
+              type="button"
+              onClick={() => void syncProjectDocs()}
+              disabled={syncingProject}
+              className="rounded-full border border-[var(--rule)] px-3 py-1 text-xs font-semibold text-[var(--text-strong)] transition hover:bg-[var(--paper-2)] disabled:opacity-60"
+            >
+              {syncingProject ? "Sync..." : "Resynchroniser le corpus"}
+            </button>
+            {selectedDoc ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void handleToggleAiEnabled()}
+                  className="rounded-full border border-[var(--rule)] px-3 py-1 text-xs font-semibold text-[var(--text-strong)] transition hover:bg-[var(--paper-2)]"
+                >
+                  IA: {selectedDoc.ai_enabled ? "inclu" : "exclu"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSyncSelectedDocument()}
+                  disabled={syncingDocument || !selectedDoc.ai_enabled}
+                  className="rounded-full border border-[var(--rule)] px-3 py-1 text-xs font-semibold text-[var(--text-strong)] transition hover:bg-[var(--paper-2)] disabled:opacity-60"
+                >
+                  {syncingDocument ? "Sync doc..." : "Synchroniser ce document"}
+                </button>
+                <span className="rounded-full bg-[var(--paper-2)] px-3 py-1 text-xs font-semibold text-[var(--text-strong)]">
+                  Doc: {selectedDoc.google_sync_status}
+                </span>
+              </>
+            ) : null}
+            {syncStatus.last_error ? (
+              <span className="text-xs font-medium text-[var(--danger)]">{syncStatus.last_error}</span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       {showCreateRoot && (
         <CreateDocModal
           spaceId={spaceId}
@@ -2147,18 +2286,23 @@ export function DocumentsTab({ spaceId, topics }: DocumentsTabProps) {
         />
       )}
 
-      {/* ── Left Sidebar (hidden in focus mode when a doc is open) ── */}
+      {/* ── Content row: sidebar + main ── */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+
+      {/* ── Left Sidebar ── */}
       {!selectedDoc ? (
-        <DocumentsHubSidebarV2 docs={filteredDocs} selectedId={selectedId} onSelect={setSelectedId} />
+        <DocumentsHubSidebarV2 docs={filteredDocs} selectedId={selectedId} onSelect={setSelectedId} collapsed={sidebarCollapsed} onToggleCollapse={() => setSidebarCollapsed((v) => !v)} />
       ) : selectedDoc.type === "page" || selectedDoc.type === "note" || selectedDoc.type === "artifact" ? (
         <DocumentPageSidebarV2
           docs={filteredDocs}
           selectedDoc={selectedDoc}
           onOpenDocuments={() => setSelectedId(null)}
           onSelect={setSelectedId}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
         />
       ) : (
-        <DocumentsHubSidebarV2 docs={filteredDocs} selectedId={selectedId} onSelect={setSelectedId} />
+        <DocumentsHubSidebarV2 docs={filteredDocs} selectedId={selectedId} onSelect={setSelectedId} collapsed={sidebarCollapsed} onToggleCollapse={() => setSidebarCollapsed((v) => !v)} />
       )}
 
       <aside className="hidden">
@@ -2276,7 +2420,7 @@ export function DocumentsTab({ spaceId, topics }: DocumentsTabProps) {
       </aside>
 
       {/* ── Main Content ─────────────────────────────────────────── */}
-      <div className="relative flex min-w-0 flex-1 bg-[var(--paper)]">
+      <div className="relative flex min-w-0 flex-1 min-h-0 bg-[var(--paper)]">
         {!selectedDoc ? (
           <DocumentsHomeViewV3 docs={docs} onSelect={setSelectedId} topics={topics} onCreateRoot={() => setShowCreateRoot(true)} spaceId={spaceId} />
         ) : selectedDoc.type === "whiteboard" || selectedDoc.type === "mermaid" ? (
@@ -2284,7 +2428,7 @@ export function DocumentsTab({ spaceId, topics }: DocumentsTabProps) {
           null
         ) : (
           <>
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             {/* Document header */}
             <DocumentEditorialHeaderV3
               doc={selectedDoc}
@@ -2296,8 +2440,8 @@ export function DocumentsTab({ spaceId, topics }: DocumentsTabProps) {
               onBack={() => setSelectedId(null)}
             />
 
-            {/* Editor area */}
-            <div className="bg-[var(--paper)]">
+            {/* Editor area — scrollable */}
+            <div className="flex-1 overflow-y-auto bg-[var(--paper)]">
               {selectedDoc.type === "folder" && selectedNode ? (
                 <FolderView
                   node={selectedNode}
@@ -2324,6 +2468,8 @@ export function DocumentsTab({ spaceId, topics }: DocumentsTabProps) {
           </>
         )}
       </div>
+
+      </div>{/* end content row */}
 
       {/* ── Mermaid plein écran ──────────────────────────────────── */}
       {selectedDoc?.type === "mermaid" && createPortal(

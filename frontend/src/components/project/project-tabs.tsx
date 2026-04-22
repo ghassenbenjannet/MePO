@@ -1,11 +1,11 @@
-import { BookOpen, FolderKanban } from "lucide-react";
+import { FolderKanban, Sparkles } from "lucide-react";
 import { cn } from "../../lib/utils";
 
-export type ProjectViewTab = "spaces" | "knowledge";
+export type ProjectViewTab = "spaces" | "ai_context";
 
 const PROJECT_TABS = [
   { id: "spaces" as ProjectViewTab, label: "Espaces de travail", icon: FolderKanban },
-  { id: "knowledge" as ProjectViewTab, label: "Base de connaissance", icon: BookOpen },
+  { id: "ai_context" as ProjectViewTab, label: "Contexte IA", icon: Sparkles },
 ];
 
 export function ProjectTabs({

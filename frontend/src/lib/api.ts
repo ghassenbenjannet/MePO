@@ -35,8 +35,13 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
     try {
-      const json = (await res.json()) as { detail?: string };
-      detail = json.detail ?? detail;
+      const json = (await res.json()) as { detail?: string | Array<{loc: string[]; msg: string}> };
+      if (typeof json.detail === "string") {
+        detail = json.detail;
+      } else if (Array.isArray(json.detail)) {
+        detail = json.detail.map((e) => `${e.loc?.join(".")}: ${e.msg}`).join(" | ");
+        console.error("[API 422]", json.detail);
+      }
     } catch { /* ignore */ }
     throw new ApiError(res.status, detail);
   }
@@ -57,8 +62,13 @@ export async function apiUpload<T>(path: string, formData: FormData): Promise<T>
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
     try {
-      const json = (await res.json()) as { detail?: string };
-      detail = json.detail ?? detail;
+      const json = (await res.json()) as { detail?: string | Array<{loc: string[]; msg: string}> };
+      if (typeof json.detail === "string") {
+        detail = json.detail;
+      } else if (Array.isArray(json.detail)) {
+        detail = json.detail.map((e) => `${e.loc?.join(".")}: ${e.msg}`).join(" | ");
+        console.error("[API 422]", json.detail);
+      }
     } catch { /* ignore */ }
     throw new ApiError(res.status, detail);
   }

@@ -4,7 +4,7 @@ import { Check, ChevronDown, ChevronUp, Copy } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 type MarkdownBlock =
-  | { type: "heading"; level: 1 | 2 | 3; content: string }
+  | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; content: string }
   | { type: "paragraph"; content: string }
   | { type: "list"; ordered: boolean; items: string[] }
   | { type: "quote"; content: string }
@@ -19,7 +19,7 @@ type MarkdownSection = {
 };
 
 function parseInline(text: string): ReactNode[] {
-  const parts = text.split(/(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g);
+  const parts = text.split(/(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`|\[[^\]]+\]\([^)]+\))/g);
   return parts
     .filter(Boolean)
     .map((part, index) => {
@@ -31,6 +31,10 @@ function parseInline(text: string): ReactNode[] {
       }
       if (part.startsWith("`") && part.endsWith("`")) {
         return <code key={index}>{part.slice(1, -1)}</code>;
+      }
+      const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+      if (linkMatch) {
+        return <a key={index} href={linkMatch[2]} target="_blank" rel="noreferrer" className="text-brand-600 underline hover:text-brand-800">{linkMatch[1]}</a>;
       }
       return <span key={index}>{part}</span>;
     });
@@ -76,20 +80,14 @@ function tokenizeMarkdown(content: string): MarkdownBlock[] {
       continue;
     }
 
-    if (line.startsWith("### ")) {
-      blocks.push({ type: "heading", level: 3, content: line.slice(4).trim() });
-      cursor += 1;
-      continue;
-    }
-    if (line.startsWith("## ")) {
-      blocks.push({ type: "heading", level: 2, content: line.slice(3).trim() });
-      cursor += 1;
-      continue;
-    }
-    if (line.startsWith("# ")) {
-      blocks.push({ type: "heading", level: 1, content: line.slice(2).trim() });
-      cursor += 1;
-      continue;
+    {
+      const headingMatch = line.match(/^(#{1,6})\s+(.*)/);
+      if (headingMatch) {
+        const level = headingMatch[1].length as 1 | 2 | 3 | 4 | 5 | 6;
+        blocks.push({ type: "heading", level, content: headingMatch[2].trim() });
+        cursor += 1;
+        continue;
+      }
     }
 
     if (line === "---" || line === "***") {
@@ -110,12 +108,12 @@ function tokenizeMarkdown(content: string): MarkdownBlock[] {
       continue;
     }
 
-    if (/^- /.test(line)) {
+    if (/^[-*+] /.test(line)) {
       const items: string[] = [];
       while (cursor < lines.length) {
         const current = (lines[cursor] ?? "").trim();
-        if (!/^- /.test(current)) break;
-        items.push(current.replace(/^- /, "").trim());
+        if (!/^[-*+] /.test(current)) break;
+        items.push(current.replace(/^[-*+] /, "").trim());
         cursor += 1;
       }
       blocks.push({ type: "list", ordered: false, items });
@@ -143,7 +141,7 @@ function tokenizeMarkdown(content: string): MarkdownBlock[] {
         current.startsWith("#")
         || current.startsWith(">")
         || current.startsWith("```")
-        || /^- /.test(current)
+        || /^[-*+] /.test(current)
         || /^\d+\.\s/.test(current)
         || current === "---"
         || current === "***"
@@ -153,7 +151,7 @@ function tokenizeMarkdown(content: string): MarkdownBlock[] {
       paragraphLines.push(current);
       cursor += 1;
     }
-    blocks.push({ type: "paragraph", content: paragraphLines.join(" ") });
+    blocks.push({ type: "paragraph", content: paragraphLines.join("\n") });
   }
 
   return blocks;
@@ -190,15 +188,31 @@ function groupBlocksIntoSections(blocks: MarkdownBlock[]): MarkdownSection[] {
 
 function MarkdownBlockView({ block }: { block: MarkdownBlock }) {
   if (block.type === "heading") {
-    return (
-      <h3 className="chat-response-subtitle">
-        {block.content}
-      </h3>
-    );
+    const headingClass = block.level <= 2
+      ? "chat-response-subtitle font-semibold"
+      : block.level === 3
+        ? "chat-response-subtitle"
+        : "text-[13px] font-semibold text-neutral-700 mt-1";
+    if (block.level === 1) return <h1 className={headingClass}>{block.content}</h1>;
+    if (block.level === 2) return <h2 className={headingClass}>{block.content}</h2>;
+    if (block.level === 3) return <h3 className={headingClass}>{block.content}</h3>;
+    if (block.level === 4) return <h4 className={headingClass}>{block.content}</h4>;
+    if (block.level === 5) return <h5 className={headingClass}>{block.content}</h5>;
+    return <h6 className={headingClass}>{block.content}</h6>;
   }
 
   if (block.type === "paragraph") {
-    return <p className="chat-message-prose">{parseInline(block.content)}</p>;
+    const lines = block.content.split("\n");
+    return (
+      <p className="chat-message-prose">
+        {lines.map((line, i) => (
+          <span key={i}>
+            {parseInline(line)}
+            {i < lines.length - 1 && <br />}
+          </span>
+        ))}
+      </p>
+    );
   }
 
   if (block.type === "quote") {

@@ -1,23 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.project import Project
-from app.schemas.skills import (
-    ProjectSkillRuntimeRead,
-    ProjectSkillSettingsRead,
-    ProjectSkillSettingsUpdate,
+from app.models.project_skill_version import ProjectSkillVersion
+from app.schemas.skills import ActiveSkillRead, SkillEditorPayload, SkillVersionRead
+from app.services.ai.active_skill_service import (
+    activate_skill_version,
+    apply_skill_v2,
+    build_compiled_context,
+    create_skill_version,
+    ensure_active_skill_version,
+    list_skill_versions,
 )
-from app.services.ai.project_skill_runtime import (
-    get_or_create_project_skill_settings,
-    get_project_skill_runtime,
-)
-from app.services.ai.project_skill_versions import ensure_active_skill_version
-from app.services.ai.skill_compiler import invalidate_compiled_skill
 
 router = APIRouter()
 
@@ -29,38 +26,123 @@ def _ensure_project(db: Session, project_id: str) -> Project:
     return project
 
 
-@router.get("/projects/{project_id}/skills/settings", response_model=ProjectSkillSettingsRead)
-def get_project_skill_settings(project_id: str, db: Session = Depends(get_db)):
-    _ensure_project(db, project_id)
-    return get_or_create_project_skill_settings(db, project_id)
+def _to_version_read(version: ProjectSkillVersion, active_version_id: str | None) -> SkillVersionRead:
+    payload = version.editor_payload_json or {}
+    return SkillVersionRead(
+        id=version.id,
+        projectId=version.project_id or "",
+        versionLabel=version.version_label,
+        editorPayload=SkillEditorPayload(
+            mainSkillText=payload.get("main_skill_text") or "",
+            generalDirectivesText=payload.get("general_directives_text") or "",
+            modePoliciesText=payload.get("mode_policies_text") or "",
+            actionPoliciesText=payload.get("action_policies_text") or "",
+            outputTemplatesText=payload.get("output_templates_text") or "",
+            guardrailsText=payload.get("guardrails_text") or "",
+        ),
+        compiledContextText=version.compiled_context_text or version.compiled_runtime_text or "",
+        sourceKind=version.source_kind,
+        createdAt=version.created_at,
+        isActive=version.id == active_version_id,
+    )
 
 
-@router.put("/projects/{project_id}/skills/settings", response_model=ProjectSkillSettingsRead)
-def update_project_skill_settings(
+def _to_active_skill_read(project: Project, version: ProjectSkillVersion) -> ActiveSkillRead:
+    return ActiveSkillRead(
+        projectId=project.id,
+        activeSkillVersionId=version.id,
+        version=_to_version_read(version, version.id),
+    )
+
+
+@router.get("/projects/{project_id}/skills/active", response_model=ActiveSkillRead)
+def get_active_skill(project_id: str, db: Session = Depends(get_db)):
+    project = _ensure_project(db, project_id)
+    version = ensure_active_skill_version(db, project_id)
+    db.commit()
+    db.refresh(project)
+    return _to_active_skill_read(project, version)
+
+
+@router.put("/projects/{project_id}/skills/active", response_model=ActiveSkillRead)
+def save_active_skill(
     project_id: str,
-    payload: ProjectSkillSettingsUpdate,
+    payload: SkillEditorPayload,
     db: Session = Depends(get_db),
 ):
-    _ensure_project(db, project_id)
-    settings = get_or_create_project_skill_settings(db, project_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
-        setattr(settings, field, value.strip() if isinstance(value, str) else value)
-    settings.updated_at = datetime.utcnow()
-    db.add(settings)
-    db.commit()
-    ensure_active_skill_version(db, project_id, force_new_version=True)
-    db.commit()
-    db.refresh(settings)
-    invalidate_compiled_skill(project_id)
-    return settings
-
-
-@router.get("/projects/{project_id}/skills/runtime", response_model=ProjectSkillRuntimeRead)
-def get_project_skills_runtime(project_id: str, db: Session = Depends(get_db)):
-    _ensure_project(db, project_id)
-    _, compiled_text, updated_at = get_project_skill_runtime(db, project_id)
-    return ProjectSkillRuntimeRead(
-        projectId=project_id,
-        compiledRuntimeText=compiled_text,
-        updatedAt=updated_at,
+    project = _ensure_project(db, project_id)
+    version = create_skill_version(
+        db,
+        project_id,
+        {
+            "main_skill_text": payload.main_skill_text,
+            "general_directives_text": payload.general_directives_text,
+            "mode_policies_text": payload.mode_policies_text,
+            "action_policies_text": payload.action_policies_text,
+            "output_templates_text": payload.output_templates_text,
+            "guardrails_text": payload.guardrails_text,
+        },
     )
+    db.commit()
+    db.refresh(project)
+    return _to_active_skill_read(project, version)
+
+
+@router.get("/projects/{project_id}/skills/versions", response_model=list[SkillVersionRead])
+def get_skill_versions(project_id: str, db: Session = Depends(get_db)):
+    project = _ensure_project(db, project_id)
+    versions = list_skill_versions(db, project_id)
+    db.commit()
+    return [_to_version_read(version, project.active_skill_version_id) for version in versions]
+
+
+@router.get("/projects/{project_id}/skills/versions/{version_id}", response_model=SkillVersionRead)
+def get_skill_version(project_id: str, version_id: str, db: Session = Depends(get_db)):
+    project = _ensure_project(db, project_id)
+    version = db.get(ProjectSkillVersion, version_id)
+    if not version or version.project_id != project_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Skill version not found")
+    return _to_version_read(version, project.active_skill_version_id)
+
+
+@router.post("/projects/{project_id}/skills/apply-v2", response_model=ActiveSkillRead)
+def apply_default_skill_v2(project_id: str, db: Session = Depends(get_db)):
+    """Create and activate Skill v2 (Copilot PO/BA/QA documentaire) for this project."""
+    project = _ensure_project(db, project_id)
+    try:
+        version = apply_skill_v2(db, project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    db.commit()
+    db.refresh(project)
+    return _to_active_skill_read(project, version)
+
+
+@router.put("/projects/{project_id}/skills/raw", response_model=ActiveSkillRead)
+def save_raw_skill(
+    project_id: str,
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    """Save a full markdown skill document as-is (no 6-section fragmentation)."""
+    project = _ensure_project(db, project_id)
+    raw_text = (body.get("raw_text") or "").strip()
+    if not raw_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="raw_text is required")
+    editor_payload = {"main_skill_text": raw_text}
+    version = create_skill_version(db, project_id, editor_payload)
+    db.commit()
+    db.refresh(project)
+    return _to_active_skill_read(project, version)
+
+
+@router.post("/projects/{project_id}/skills/versions/{version_id}/activate", response_model=ActiveSkillRead)
+def activate_skill(project_id: str, version_id: str, db: Session = Depends(get_db)):
+    project = _ensure_project(db, project_id)
+    try:
+        version = activate_skill_version(db, project_id, version_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    db.commit()
+    db.refresh(project)
+    return _to_active_skill_read(project, version)

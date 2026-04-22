@@ -141,6 +141,13 @@ export interface Document {
   tags: string[];
   doc_metadata: Record<string, unknown>;
   icon: string | null;
+  ai_enabled: boolean;
+  google_sync_status: string;
+  corpus_status: string | null;
+  google_file_id: string | null;
+  google_web_url: string | null;
+  last_synced_at: string | null;
+  last_error: string | null;
   is_archived: boolean;
   created_at: string | null;
   updated_at: string | null;
@@ -156,4 +163,5 @@ export interface DocumentCreate {
   tags?: string[];
   doc_metadata?: Record<string, unknown>;
   icon?: string | null;
+  ai_enabled?: boolean;
 }

@@ -28,9 +28,8 @@ import {
   type KnowledgeDoc,
   useDeleteKnowledgeDoc,
   useKnowledgeDocs,
-  useKnowledgeSettings,
   useKnowledgeSyncStatus,
-  useSaveKnowledgeSettings,
+  useReplaceKnowledgeDocFile,
   useSyncProjectKnowledge,
   useUpdateKnowledgeDoc,
   useUploadKnowledgeDoc,
@@ -761,6 +760,17 @@ function KnowledgeDocCard({
 }) {
   const { mutate: updateDoc } = useUpdateKnowledgeDoc(projectId);
   const { mutate: deleteDoc, isPending: deleting } = useDeleteKnowledgeDoc(projectId);
+  const { mutate: replaceFile, isPending: replacing } = useReplaceKnowledgeDocFile(projectId);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+
+  function handleReplaceFile(e: { target: { files?: FileList | null; value: string } }) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    replaceFile({ id: doc.id, formData: fd });
+    e.target.value = "";
+  }
 
   return (
     <article className={cn(
@@ -773,7 +783,7 @@ function KnowledgeDocCard({
             <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", docTypeCls(doc.category))}>
               {docTypeLabel(doc.category)}
             </span>
-            {!doc.openai_file_id && (
+            {doc.sync_status === "not_synced" && (
               <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
                 Pas encore synchronisé
               </span>
@@ -795,7 +805,7 @@ function KnowledgeDocCard({
             )}
             {doc.sync_status === "removed" && (
               <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
-                Retiré du vector store
+                Retiré du corpus
               </span>
             )}
             {doc.sync_status === "error" && (
@@ -820,7 +830,6 @@ function KnowledgeDocCard({
           {showDebug && (
             <div className="mt-2 space-y-1 font-mono text-[10px] text-muted">
               {doc.content_hash ? <p>hash: {doc.content_hash.slice(0, 16)}</p> : null}
-              {doc.openai_file_id ? <p>openai_file_id: {doc.openai_file_id}</p> : null}
               {doc.local_file_id ? <p>local_file_id: {doc.local_file_id}</p> : null}
             </div>
           )}
@@ -828,11 +837,25 @@ function KnowledgeDocCard({
             <span>Source: {doc.source_type}</span>
             <span>Maj: {doc.updated_at ? new Date(doc.updated_at).toLocaleString("fr-FR") : "n/a"}</span>
           </div>
-          {doc.sync_error ? (
+          {doc.sync_status === "error" && (
             <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
-              {doc.sync_error}
+              <span>{doc.sync_error ?? "Aucun contenu textuel disponible."}</span>
+              <button
+                onClick={() => replaceInputRef.current?.click()}
+                disabled={replacing}
+                className="ml-2 underline font-semibold hover:text-rose-900"
+              >
+                {replacing ? "Chargement…" : "Remplacer le fichier"}
+              </button>
+              <input
+                ref={replaceInputRef}
+                type="file"
+                className="hidden"
+                accept=".pdf,.docx,.xlsx,.txt,.md,.csv,.json"
+                onChange={handleReplaceFile}
+              />
             </div>
-          ) : null}
+          )}
         </div>
 
         <div className="flex flex-shrink-0 flex-col items-end gap-2">
@@ -876,42 +899,23 @@ function KnowledgeDocCard({
 
 function KnowledgeSection({ projectId }: { projectId: string }) {
   const { data: docs = [], isLoading } = useKnowledgeDocs(projectId);
-  const { data: knowledgeSettings } = useKnowledgeSettings(projectId);
   const { data: syncStatus } = useKnowledgeSyncStatus(projectId);
-  const { mutateAsync: saveSettings, isPending: savingSettings } = useSaveKnowledgeSettings(projectId);
-  const { mutateAsync: syncVectorStore, isPending: syncing } = useSyncProjectKnowledge(projectId);
+  const { mutateAsync: syncCorpus, isPending: syncing } = useSyncProjectKnowledge(projectId);
   const [showUpload, setShowUpload] = useState(false);
   const [editingDoc, setEditingDoc] = useState<KnowledgeDoc | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [showDebug, setShowDebug] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
-  const [vectorStoreIdInput, setVectorStoreIdInput] = useState("");
-  const [settingsError, setSettingsError] = useState<string | null>(null);
 
   const filtered = typeFilter === "all" ? docs : docs.filter((d) => d.category === typeFilter);
   const activeCount = docs.filter((d) => d.is_active).length;
-  const syncedCount = docs.filter((d) => ["added", "updated", "synced", "ignored"].includes(d.sync_status)).length;
-  const storedVectorStoreId = knowledgeSettings?.vector_store_id?.trim() || "";
+  const syncedCount = docs.filter((d) => ["synced", "ignored"].includes(d.sync_status)).length;
   const summary = syncStatus?.last_sync_summary_json ?? {};
-
-  useEffect(() => {
-    setVectorStoreIdInput(knowledgeSettings?.vector_store_id ?? "");
-  }, [knowledgeSettings?.vector_store_id]);
-
-  async function handleSaveVectorStore() {
-    setSettingsError(null);
-    try {
-      await saveSettings(vectorStoreIdInput.trim() || null);
-      setSyncResult("Paramètre vector store enregistré.");
-    } catch (error) {
-      setSettingsError(error instanceof Error ? error.message : "Impossible d'enregistrer le vector_store_id.");
-    }
-  }
 
   async function handleSync() {
     setSyncResult(null);
     try {
-      const result = await syncVectorStore();
+      const result = await syncCorpus();
       const nextSummary = result.summary ?? {};
       setSyncResult(
         `${nextSummary.added ?? 0} ajouté${(nextSummary.added ?? 0) > 1 ? "s" : ""}, ` +
@@ -938,7 +942,7 @@ function KnowledgeSection({ projectId }: { projectId: string }) {
           <div>
             <h2 className="text-base font-semibold text-ink">Connaissances projet</h2>
             <p className="mt-0.5 text-sm text-muted">
-              Corpus métier du projet, synchronisé uniquement à la demande vers un vector store OpenAI existant.
+              Corpus métier du projet — indexé localement, utilisé par l'IA à la demande.
               {activeCount > 0 && (
                 <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
                   <Check className="h-2.5 w-2.5" />
@@ -948,7 +952,7 @@ function KnowledgeSection({ projectId }: { projectId: string }) {
               {syncedCount > 0 && (
                 <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-semibold text-brand-700">
                   <Sparkles className="h-2.5 w-2.5" />
-                  {syncedCount} dans vector store
+                  {syncedCount} dans le corpus
                 </span>
               )}
             </p>
@@ -956,14 +960,14 @@ function KnowledgeSection({ projectId }: { projectId: string }) {
           <div className="flex items-center gap-2">
             <button
               onClick={handleSync}
-              disabled={syncing || !storedVectorStoreId}
+              disabled={syncing}
               className={cn(
                 "flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs transition",
-                syncing || !storedVectorStoreId
+                syncing
                   ? "border-brand-200 bg-brand-50 text-brand-700"
                   : "border-line text-muted hover:border-brand-200 hover:text-brand-700",
               )}
-              title={storedVectorStoreId ? "Synchroniser les documents actifs vers le vector store enregistré" : "Enregistre d'abord un vector_store_id"}
+              title="Synchroniser les documents actifs dans le corpus MePO"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", syncing && "animate-spin")} />
               {syncing ? "Synchronisation..." : "Synchroniser"}
@@ -987,56 +991,23 @@ function KnowledgeSection({ projectId }: { projectId: string }) {
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-          <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-panel)] p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Vector Store OpenAI</p>
-            <p className="mt-1 text-sm text-muted">
-              Renseigne ici l'identifiant du vector store à réutiliser. Aucun vector store n'est créé automatiquement.
-            </p>
-            <div className="mt-4 flex flex-col gap-3 md:flex-row">
-              <input
-                value={vectorStoreIdInput}
-                onChange={(event) => setVectorStoreIdInput(event.target.value)}
-                placeholder="vs_..."
-                className="input flex-1 font-mono"
-              />
-              <button
-                type="button"
-                onClick={() => void handleSaveVectorStore()}
-                disabled={savingSettings}
-                className="btn-secondary disabled:opacity-60"
-              >
-                {savingSettings ? "Enregistrement..." : "Enregistrer"}
-              </button>
-            </div>
-            {settingsError ? (
-              <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
-                {settingsError}
-              </div>
-            ) : null}
-            <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3 text-xs text-[var(--text-muted)]">
-              ID enregistré : <span className="font-mono text-ink">{storedVectorStoreId || "aucun"}</span>
-            </div>
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-panel)] p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Dernière synchronisation</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-4">
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3"><p className="text-[11px] font-semibold text-muted">Statut</p><p className="mt-1 text-sm text-ink">{syncStatus?.last_sync_status ?? "idle"}</p></div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3"><p className="text-[11px] font-semibold text-muted">Dernière fin</p><p className="mt-1 text-sm text-ink">{syncStatus?.last_sync_finished_at ? new Date(syncStatus.last_sync_finished_at).toLocaleString("fr-FR") : "Jamais"}</p></div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3"><p className="text-[11px] font-semibold text-muted">Traités</p><p className="mt-1 text-sm text-ink">{summary.scanned ?? 0}</p></div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3"><p className="text-[11px] font-semibold text-muted">Ajoutés</p><p className="mt-1 text-sm text-ink">{summary.added ?? 0}</p></div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3"><p className="text-[11px] font-semibold text-muted">Mis à jour</p><p className="mt-1 text-sm text-ink">{summary.updated ?? 0}</p></div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3"><p className="text-[11px] font-semibold text-muted">Ignorés</p><p className="mt-1 text-sm text-ink">{summary.ignored ?? 0}</p></div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3"><p className="text-[11px] font-semibold text-muted">Retirés</p><p className="mt-1 text-sm text-ink">{summary.removed ?? 0}</p></div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3"><p className="text-[11px] font-semibold text-muted">Erreurs</p><p className="mt-1 text-sm text-ink">{summary.errors ?? 0}</p></div>
           </div>
-
-          <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-panel)] p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Dernière synchronisation</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3"><p className="text-[11px] font-semibold text-muted">Statut</p><p className="mt-1 text-sm text-ink">{syncStatus?.last_sync_status ?? "idle"}</p></div>
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3"><p className="text-[11px] font-semibold text-muted">Dernière fin</p><p className="mt-1 text-sm text-ink">{syncStatus?.last_sync_finished_at ? new Date(syncStatus.last_sync_finished_at).toLocaleString("fr-FR") : "Jamais"}</p></div>
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3"><p className="text-[11px] font-semibold text-muted">Traités</p><p className="mt-1 text-sm text-ink">{summary.scanned ?? 0}</p></div>
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3"><p className="text-[11px] font-semibold text-muted">Ajoutés</p><p className="mt-1 text-sm text-ink">{summary.added ?? 0}</p></div>
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3"><p className="text-[11px] font-semibold text-muted">Mis à jour</p><p className="mt-1 text-sm text-ink">{summary.updated ?? 0}</p></div>
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3"><p className="text-[11px] font-semibold text-muted">Ignorés</p><p className="mt-1 text-sm text-ink">{summary.ignored ?? 0}</p></div>
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3"><p className="text-[11px] font-semibold text-muted">Retirés</p><p className="mt-1 text-sm text-ink">{summary.removed ?? 0}</p></div>
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] px-4 py-3"><p className="text-[11px] font-semibold text-muted">Erreurs</p><p className="mt-1 text-sm text-ink">{summary.errors ?? 0}</p></div>
+          {syncStatus?.last_sync_error ? (
+            <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
+              {syncStatus.last_sync_error}
             </div>
-            {syncStatus?.last_sync_error ? (
-              <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
-                {syncStatus.last_sync_error}
-              </div>
-            ) : null}
-          </div>
+          ) : null}
         </div>
 
         {/* Sync result banner */}
@@ -1115,10 +1086,9 @@ function KnowledgeSection({ projectId }: { projectId: string }) {
         <div className="flex items-start gap-3 rounded-2xl border border-brand-100 bg-brand-50/40 px-4 py-3">
           <FolderKanban className="mt-0.5 h-4 w-4 flex-shrink-0 text-brand-500" />
           <p className="text-xs leading-relaxed text-brand-700/80">
-            <strong>Comment ça marche ?</strong> Les documents restent locaux dans MePO. Quand tu cliques sur
-            <strong> Synchroniser</strong>, MePO extrait leur contenu, construit une version textuelle stable, puis
-            l'envoie dans le <code className="mx-1 rounded bg-[var(--bg-panel)] px-1 py-0.5 font-mono">vector_store_id</code> enregistré.
-            Aucun vector store n'est créé automatiquement.
+            <strong>Comment ça marche ?</strong> Les documents restent dans MePO. Quand tu cliques sur
+            <strong> Synchroniser</strong>, MePO calcule une empreinte de chaque document actif et met à jour
+            le corpus local utilisé par l'IA. Aucun service externe n'est sollicité.
           </p>
         </div>
       </section>
@@ -1128,7 +1098,7 @@ function KnowledgeSection({ projectId }: { projectId: string }) {
 
 // ─── Page tabs ────────────────────────────────────────────────────────────────
 
-type ProjectTab = "spaces" | "knowledge";
+type ProjectTab = "spaces" | "ai_context";
 type KnowledgeTab = "skills" | "documents";
 
 function ProjectWorkspaceRail({
@@ -1173,8 +1143,9 @@ export function ProjectPage() {
   const projectId = project?.id;
 
   const { data: spaces = [], isLoading: loadingSpaces } = useSpaces(projectId);
-  const { data: knowledgeDocs = [] } = useKnowledgeDocs(projectId);
   const favoriteSpaces = useMemo(() => spaces.filter((space) => space.is_favorite), [spaces]);
+  const knowledgeDocs: KnowledgeDoc[] = [];
+  const syncedCount: number = 0;
 
   useEffect(() => {
     if (!project || !isLegacyEntitySlug(projectSlug)) return;
@@ -1184,8 +1155,6 @@ export function ProjectPage() {
   if (loadingProjects || loadingSpaces) {
     return <PageSkeleton />;
   }
-
-  const syncedCount = knowledgeDocs.filter((doc: KnowledgeDoc) => doc.sync_status === "synced").length;
 
   return (
     <>
@@ -1201,7 +1170,7 @@ export function ProjectPage() {
           title={project?.name ?? "Projet"}
           spacesCount={spaces.length}
           favoriteSpacesCount={favoriteSpaces.length}
-          knowledgeCount={knowledgeDocs.length}
+          aiContextCount={1}
           description={project?.description ?? "Consultez les espaces, la base de connaissance et les réglages du projet."}
           actions={
             <>
@@ -1267,30 +1236,32 @@ export function ProjectPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <div>
-              <h2 className="text-base font-semibold text-[var(--text-strong)]">Base de connaissance</h2>
-              <p className="mt-0.5 text-sm text-[var(--text-muted)]">Configuration du moteur et corpus documentaire du projet.</p>
-            </div>
-            <div className="flex items-center gap-1 rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] p-1">
+            {/* Sous-onglets Skills / Documents */}
+            <div className="flex gap-1 rounded-xl border border-[var(--border)] bg-[var(--bg-panel-2)] p-1 w-fit">
               {([
-                { id: "skills" as KnowledgeTab, label: "Skills et directives", icon: Sparkles },
-                { id: "documents" as KnowledgeTab, label: "Connaissances projet", icon: BookOpen },
-              ] as const).map(({ id, label, icon: Icon }) => (
+                { key: "skills", label: "Skill IA" },
+                { key: "documents", label: "Base de connaissances" },
+              ] as { key: KnowledgeTab; label: string }[]).map((tab) => (
                 <button
-                  key={id}
-                  onClick={() => setActiveKnowledgeTab(id)}
-                  className={cn("workspace-tab", activeKnowledgeTab === id && "workspace-tab-active")}
+                  key={tab.key}
+                  onClick={() => setActiveKnowledgeTab(tab.key)}
+                  className={cn(
+                    "rounded-lg px-4 py-1.5 text-sm font-medium transition",
+                    activeKnowledgeTab === tab.key
+                      ? "bg-[var(--bg-panel)] text-[var(--text-strong)] shadow-sm"
+                      : "text-[var(--text-muted)] hover:text-[var(--text-strong)]",
+                  )}
                 >
-                  <Icon className="h-4 w-4" />
-                  {label}
+                  {tab.label}
                 </button>
               ))}
             </div>
-            {projectId ? (
-              activeKnowledgeTab === "skills"
-                ? <ProjectSkillsSection projectId={projectId} />
-                : <KnowledgeSection projectId={projectId} />
-            ) : null}
+
+            {activeKnowledgeTab === "skills" ? (
+              projectId ? <ProjectSkillsSection projectId={projectId} /> : null
+            ) : (
+              projectId ? <KnowledgeSection projectId={projectId} /> : null
+            )}
           </div>
         )}
       </div>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import uuid
 from datetime import datetime
@@ -23,6 +24,14 @@ from app.schemas.knowledge import (
 from app.services.knowledge.content_extractor import extract_text_from_file
 from app.services.knowledge.sync_service import sync_project_knowledge
 from app.services.ai.workspace_cache import invalidate_workspace_cache
+
+
+def _auto_sync_doc(doc: ProjectKnowledgeDocument, content: str) -> None:
+    """Mark a document as synced immediately when content is available at creation."""
+    if content and content.strip():
+        doc.content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        doc.sync_status = "synced"
+        doc.synced_at = datetime.utcnow()
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -121,7 +130,6 @@ def trigger_project_knowledge_sync(project_id: str, db: Session = Depends(get_db
 
 
 @router.get("/projects/{project_id}/knowledge/documents", response_model=list[KnowledgeDocRead])
-@router.get("/projects/{project_id}/knowledge-documents", response_model=list[KnowledgeDocRead])
 def list_project_knowledge_documents(project_id: str, db: Session = Depends(get_db)):
     _ensure_project(db, project_id)
     return (
@@ -137,13 +145,13 @@ def list_project_knowledge_documents(project_id: str, db: Session = Depends(get_
 
 
 @router.post("/projects/{project_id}/knowledge/documents", response_model=KnowledgeDocRead, status_code=status.HTTP_201_CREATED)
-@router.post("/projects/{project_id}/knowledge-documents", response_model=KnowledgeDocRead, status_code=status.HTTP_201_CREATED)
 def create_project_knowledge_document(
     project_id: str,
     payload: KnowledgeDocCreate,
     db: Session = Depends(get_db),
 ):
     _ensure_project(db, project_id)
+    content = (payload.content_extracted_text or "").strip()
     doc = ProjectKnowledgeDocument(
         project_id=project_id,
         scope="project",
@@ -161,6 +169,7 @@ def create_project_knowledge_document(
         content_hash=None,
         sync_status="not_synced",
     )
+    _auto_sync_doc(doc, content)
     db.add(doc)
     db.commit()
     db.refresh(doc)
@@ -169,7 +178,6 @@ def create_project_knowledge_document(
 
 
 @router.post("/projects/{project_id}/knowledge/documents/upload", response_model=KnowledgeDocRead, status_code=status.HTTP_201_CREATED)
-@router.post("/projects/{project_id}/knowledge-documents/upload", response_model=KnowledgeDocRead, status_code=status.HTTP_201_CREATED)
 async def upload_project_knowledge_document(
     project_id: str,
     file: UploadFile = File(...),
@@ -192,6 +200,7 @@ async def upload_project_knowledge_document(
 
     tag_list = [item.strip() for item in tags.split(",") if item.strip()]
     now = datetime.utcnow()
+    extracted_clean = extracted_text.strip()
     doc = ProjectKnowledgeDocument(
         project_id=project_id,
         scope="project",
@@ -204,11 +213,12 @@ async def upload_project_knowledge_document(
         original_filename=file.filename,
         summary=summary.strip() or None,
         tags=tag_list,
-        content_extracted_text=extracted_text.strip(),
+        content_extracted_text=extracted_clean,
         sync_status="not_synced",
         created_at=now,
         updated_at=now,
     )
+    _auto_sync_doc(doc, extracted_clean)
     db.add(doc)
     db.commit()
     db.refresh(doc)
@@ -217,7 +227,6 @@ async def upload_project_knowledge_document(
 
 
 @router.patch("/knowledge/documents/{doc_id}", response_model=KnowledgeDocRead)
-@router.patch("/knowledge-documents/{doc_id}", response_model=KnowledgeDocRead)
 def update_project_knowledge_document(
     doc_id: str,
     payload: KnowledgeDocUpdate,
@@ -254,8 +263,41 @@ def update_project_knowledge_document(
     return doc
 
 
+@router.post("/knowledge/documents/{doc_id}/reupload", response_model=KnowledgeDocRead)
+async def reupload_knowledge_document(
+    doc_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    doc = db.get(ProjectKnowledgeDocument, doc_id)
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge document not found")
+
+    raw_bytes = await file.read()
+    try:
+        extracted_text = extract_text_from_file(file.filename or "document", file.content_type, raw_bytes)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Impossible d'extraire le contenu du document: {exc}",
+        ) from exc
+
+    extracted_clean = extracted_text.strip()
+    doc.mime_type = file.content_type
+    doc.original_filename = file.filename
+    doc.content_extracted_text = extracted_clean
+    doc.sync_status = "not_synced"
+    doc.sync_error = None
+    doc.updated_at = datetime.utcnow()
+    _auto_sync_doc(doc, extracted_clean)
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    invalidate_workspace_cache(project_id=doc.project_id)
+    return doc
+
+
 @router.delete("/knowledge/documents/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
-@router.delete("/knowledge-documents/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project_knowledge_document(doc_id: str, db: Session = Depends(get_db)):
     doc = db.get(ProjectKnowledgeDocument, doc_id)
     if not doc:

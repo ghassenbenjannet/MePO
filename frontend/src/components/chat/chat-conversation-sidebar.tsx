@@ -2,11 +2,11 @@ import { memo, useCallback, useDeferredValue, useEffect, useMemo, useState } fro
 import { Loader2, MessageSquareText, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { RowSkeleton } from "../ui/skeleton";
 import { Button } from "../ui/button";
-import type { ChatNodeConversationPreview } from "../../hooks/use-chat-node";
+import type { ChatConversationPreview } from "../../hooks/use-chat-conversations";
 import { cn } from "../../lib/utils";
 
 type ChatSidebarProps = {
-  conversations: ChatNodeConversationPreview[];
+  conversations: ChatConversationPreview[];
   activeConversationId: string | null;
   loading: boolean;
   error: boolean;
@@ -25,10 +25,10 @@ type ChatSidebarProps = {
 type ConversationGroup = {
   id: string;
   label: string;
-  items: ChatNodeConversationPreview[];
+  items: ChatConversationPreview[];
 };
 
-function groupConversations(conversations: ChatNodeConversationPreview[]): ConversationGroup[] {
+function groupConversations(conversations: ChatConversationPreview[]): ConversationGroup[] {
   const buckets = new Map<string, ConversationGroup>();
   const now = new Date();
 
@@ -80,7 +80,7 @@ const ConversationItem = memo(function ConversationItem({
   onDelete,
   onRename,
 }: {
-  conversation: ChatNodeConversationPreview;
+  conversation: ChatConversationPreview;
   active: boolean;
   deleting: boolean;
   renaming: boolean;
@@ -115,7 +115,7 @@ const ConversationItem = memo(function ConversationItem({
   return (
     <div
       className={cn(
-        "chat-conversation-item",
+        "chat-conversation-item group",
         active && "chat-conversation-item-active",
       )}
     >
@@ -124,8 +124,8 @@ const ConversationItem = memo(function ConversationItem({
         onClick={() => onSelect(conversation.id)}
         className="min-w-0 flex-1 text-left"
       >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
             {isEditing ? (
               <input
                 autoFocus
@@ -144,25 +144,27 @@ const ConversationItem = memo(function ConversationItem({
                     setIsEditing(false);
                   }
                 }}
-                className="chat-conversation-input"
+                className="chat-conversation-input w-full"
               />
             ) : (
-              <p className="truncate text-sm font-semibold text-[var(--text-strong)]">{conversation.title}</p>
+              <p className="truncate text-[13px] font-semibold leading-snug text-[var(--ink)]">
+                {conversation.title}
+              </p>
             )}
-            <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--text-muted)]">
-              {conversation.last_assistant_preview || "Aucune réponse assistant pour le moment"}
-            </p>
+            {!isEditing && (
+              <p className="mt-0.5 truncate text-[11.5px] leading-snug text-[var(--ink-4)]">
+                {conversation.last_assistant_preview || "—"}
+              </p>
+            )}
           </div>
-          <div className="chat-conversation-time">{formatConversationTime(conversation.last_message_at)}</div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {unreadLabel ? <span className="chat-unread-pill">{unreadLabel}</span> : null}
-          {conversation.status ? <span className="chat-status-pill">{conversation.status}</span> : null}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <span className="chat-conversation-time">{formatConversationTime(conversation.last_message_at)}</span>
+            {unreadLabel ? <span className="chat-unread-pill">{unreadLabel}</span> : null}
+          </div>
         </div>
       </button>
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
         <button
           type="button"
           onClick={() => {
@@ -173,7 +175,7 @@ const ConversationItem = memo(function ConversationItem({
           className="chat-icon-button"
           aria-label={`Renommer ${conversation.title}`}
         >
-          {renaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Pencil className="h-3.5 w-3.5" />}
+          {renaming ? <Loader2 className="h-3 w-3 animate-spin" /> : <Pencil className="h-3 w-3" />}
         </button>
         <button
           type="button"
@@ -182,7 +184,7 @@ const ConversationItem = memo(function ConversationItem({
           className="chat-icon-button"
           aria-label={`Supprimer ${conversation.title}`}
         >
-          {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+          {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
         </button>
       </div>
     </div>
@@ -227,11 +229,8 @@ export function ChatConversationSidebar({
       <div className="chat-sidebar-panel">
         <div className="chat-sidebar-top">
           <div>
-            <p className="chat-sidebar-eyebrow">Conversations</p>
-            <h2 className="chat-sidebar-title">Fils actifs</h2>
-            <p className="mt-2 max-w-[18rem] text-xs leading-6 text-[var(--text-muted)]">
-              Conversations récentes, prêtes à reprendre là où la décision s'est arrêtée.
-            </p>
+            <p className="chat-sidebar-eyebrow">Discussions</p>
+            <h2 className="chat-sidebar-title">Let's chat</h2>
           </div>
 
           <div className="flex items-center gap-2">

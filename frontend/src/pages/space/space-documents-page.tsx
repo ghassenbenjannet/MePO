@@ -26,5 +26,5 @@ export function SpaceDocumentsPage() {
     navigate(spaceDocumentsPath(projectRef, spaceRef), { replace: true });
   }, [navigate, projectId, projectRef, projectSlug, spaceId, spaceRef, spaceSlug]);
 
-  return spaceId ? <DocumentsTab spaceId={spaceId} topics={topics} /> : null;
+  return spaceId ? <DocumentsTab projectId={projectId} spaceId={spaceId} topics={topics} /> : null;
 }

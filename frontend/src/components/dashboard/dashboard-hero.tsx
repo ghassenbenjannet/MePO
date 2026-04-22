@@ -32,7 +32,7 @@ export function DashboardHero({
         <div className="min-w-0">
           <p className="eyebrow">Cockpit</p>
           <h1 className="proj-hero mt-2">
-            {`Bonjour ${firstName},`}
+            {`Bonjour ${firstName} 👋,`}
           </h1>
           <p className="mt-5 max-w-2xl text-[14px] leading-7 text-[var(--text-muted)]">
             {activeCount > 0

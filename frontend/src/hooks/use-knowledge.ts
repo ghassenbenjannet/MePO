@@ -18,7 +18,6 @@ export interface KnowledgeDoc {
   sync_status: string;
   synced_at: string | null;
   sync_error: string | null;
-  openai_file_id: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -26,7 +25,6 @@ export interface KnowledgeDoc {
 export interface KnowledgeSettings {
   id: string | null;
   project_id: string;
-  vector_store_id: string | null;
   last_sync_status: string;
   last_sync_started_at: string | null;
   last_sync_finished_at: string | null;
@@ -51,7 +49,6 @@ export interface KnowledgeSettings {
 
 export interface KnowledgeSyncResponse {
   project_id: string;
-  vector_store_id: string;
   status: string;
   synced: number;
   skipped: number;
@@ -86,19 +83,6 @@ export function useKnowledgeSettings(projectId: string | undefined) {
   });
 }
 
-export function useSaveKnowledgeSettings(projectId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (vectorStoreId: string | null) =>
-      api.put<KnowledgeSettings>(`/api/projects/${projectId}/knowledge/settings`, {
-        vectorStoreId,
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["knowledge-settings", projectId] });
-      qc.invalidateQueries({ queryKey: ["knowledge-sync-status", projectId] });
-    },
-  });
-}
 
 export function useKnowledgeSyncStatus(projectId: string | undefined) {
   return useQuery<KnowledgeSettings>({
@@ -143,6 +127,15 @@ export function useUpdateKnowledgeDoc(projectId: string) {
       qc.invalidateQueries({ queryKey: ["knowledge-docs", projectId] });
       qc.invalidateQueries({ queryKey: ["knowledge-sync-status", projectId] });
     },
+  });
+}
+
+export function useReplaceKnowledgeDocFile(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, formData }: { id: string; formData: FormData }) =>
+      api.upload<KnowledgeDoc>(`/api/knowledge/documents/${id}/reupload`, formData),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["knowledge-docs", projectId] }),
   });
 }
 

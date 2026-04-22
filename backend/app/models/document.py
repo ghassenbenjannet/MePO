@@ -21,6 +21,7 @@ class Document(Base):
     tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     doc_metadata: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     icon: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    ai_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(), default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(), default=datetime.utcnow, nullable=False)
